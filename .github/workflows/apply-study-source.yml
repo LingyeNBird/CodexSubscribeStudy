@@ -1,0 +1,50 @@
+name: Apply verified study sources
+on:
+  push:
+    branches: [feat/community-research-platform]
+    paths: [.github/workflows/apply-study-source.yml]
+permissions:
+  contents: write
+jobs:
+  apply:
+    if: github.repository == 'LingyeNBird/CodexSubscribeStudy'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Verify patch and write real tracked source files
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python - <<'PY'
+          import base64, hashlib, json, lzma, pathlib, subprocess
+          blobs = ['19764878919f6aa3743618cb0e7e260371093389', 'c5e8687d93cc3855c111711577d86db9f0abfc0f', '5c8017357d919f5ab086b46bb3f6ecde0d7f1b07', 'b54cd6a912cce9974a63600672db2b6efa4afede']
+          pieces = []
+          for sha in blobs:
+              response = json.loads(subprocess.check_output(['gh', 'api', 'repos/LingyeNBird/CodexSubscribeStudy/git/blobs/' + sha]))
+              raw = base64.b64decode(response['content'])
+              assert hashlib.sha1(b'blob '+str(len(raw)).encode()+b'\0'+raw).hexdigest() == sha
+              pieces.append(raw)
+          packed = b''.join(pieces)
+          assert hashlib.sha256(packed).hexdigest() == 'fdd896911bbdab0682ba4ab7600ba4ce2eff47399e32a5b4c21ac06e6a4241e7'
+          payload = json.loads(lzma.decompress(packed))
+          assert len(payload['hashes']) == 32
+          for name in payload['hashes']:
+              path = pathlib.PurePosixPath(name)
+              assert not path.is_absolute() and '..' not in path.parts
+              assert name in ('.gitignore', '.dockerignore', 'Dockerfile', 'LICENSE', 'README.md', 'compose.yaml', 'go.mod', 'go.sum') or path.parts[0] in ('cmd','internal','protocol','docs','scripts','web')
+              assert not any(part in ('.git','.env','node_modules','.venv') for part in path.parts)
+          patch = pathlib.Path('/tmp/study-verified.patch')
+          patch.write_text(payload['patch'])
+          subprocess.run(['git','apply','--check',str(patch)],check=True)
+          subprocess.run(['git','apply','--index',str(patch)],check=True)
+          changed = subprocess.check_output(['git','diff','--cached','--name-only']).decode().splitlines()
+          assert set(changed) == set(payload['hashes'])
+          for name, expected in payload['hashes'].items():
+              assert subprocess.check_output(['git','hash-object',name]).decode().strip() == expected, name
+          subprocess.run(['git','diff','--cached','--check'],check=True)
+          print('Verified 32 actual source files; no source archives in the working tree.')
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'feat: add Go and Vue community research platform with signed aggregate reports'
+          git push origin HEAD:refs/heads/feat/community-research-platform
