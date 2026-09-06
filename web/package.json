@@ -1,0 +1,10 @@
+{
+  "name": "codex-subscribe-study-web",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.3.4",
+  "scripts": { "dev": "vite --host 127.0.0.1", "check": "vue-tsc --noEmit", "build": "vue-tsc --noEmit && vite build" },
+  "dependencies": { "vue": "^3.5.40" },
+  "devDependencies": { "@vitejs/plugin-vue": "^6.0.8", "typescript": "^5.9.3", "vite": "^8.1.0", "vue-tsc": "^3.3.9" }
+}

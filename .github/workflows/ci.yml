@@ -1,0 +1,78 @@
+name: Study platform verification
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: study-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Record source integrity
+        run: |
+          test -f internal/study/aggregate.go
+          test -f web/src/App.vue
+          test ! -f .github/workflows/apply-study-source.yml
+          test ! -f .github/workflows/repair-pnpm-lock.yml
+          mkdir -p "$RUNNER_TEMP/study-review"
+          echo "STUDY_REVIEW_OUTPUT=$RUNNER_TEMP/study-review" >> "$GITHUB_ENV"
+          git rev-parse HEAD > "$RUNNER_TEMP/study-review/tested-commit.txt"
+          git ls-tree -r HEAD > "$RUNNER_TEMP/study-review/source-manifest.txt"
+          git diff --check
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          package-manager-cache: false
+      - run: corepack enable
+      - name: Build Vue SPA from locked dependencies
+        working-directory: web
+        run: |
+          pnpm install --frozen-lockfile
+          git diff --exit-code -- pnpm-lock.yaml package.json
+          pnpm check
+          pnpm build
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.25.x'
+      - name: Validate Go protocol, aggregation, store and API
+        run: |
+          go mod download
+          go vet ./...
+          go test -race -count=1 -v ./... | tee "$STUDY_REVIEW_OUTPUT/go-tests.log"
+          go build -trimpath -o "$RUNNER_TEMP/study" ./cmd/study
+          GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -trimpath -o "$RUNNER_TEMP/study-arm64" ./cmd/study
+          echo "STUDY_BINARY=$RUNNER_TEMP/study" >> "$GITHUB_ENV"
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Install browser test dependencies
+        run: |
+          python -m pip install 'playwright==1.57.0' 'cryptography>=45,<46'
+          python -m playwright install --with-deps chromium
+      - name: Exercise real Go and Vue signed submissions and privacy
+        run: python scripts/browser_smoke.py
+      - name: Verify production container build without publishing
+        run: docker build --tag study-verification:local .
+      - name: Retain synthetic test evidence only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: study-platform-evidence
+          retention-days: 7
+          path: |
+            ${{ env.STUDY_REVIEW_OUTPUT }}/*.png
+            ${{ env.STUDY_REVIEW_OUTPUT }}/*.json
+            ${{ env.STUDY_REVIEW_OUTPUT }}/*.txt
+            ${{ env.STUDY_REVIEW_OUTPUT }}/*.log

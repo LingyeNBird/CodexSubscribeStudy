@@ -1,0 +1,11 @@
+/vendor/
+/web/node_modules
+/web/dist/*
+!/web/dist/.keep
+/data/
+*.db
+*.db-*
+/study
+/review-output/
+.env
+__pycache__/

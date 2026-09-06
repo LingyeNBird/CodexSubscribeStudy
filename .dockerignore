@@ -1,0 +1,8 @@
+.git
+vendor
+web/node_modules
+web/dist
+data
+review-output
+*.db
+.env
