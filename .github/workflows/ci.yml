@@ -13,6 +13,9 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v7
         with:
@@ -22,6 +25,7 @@ jobs:
           test -f internal/study/aggregate.go
           test -f web/src/App.vue
           test ! -f .github/workflows/apply-study-source.yml
+          test ! -f .github/workflows/repair-pnpm-lock.yml
           mkdir -p "$RUNNER_TEMP/study-review"
           echo "STUDY_REVIEW_OUTPUT=$RUNNER_TEMP/study-review" >> "$GITHUB_ENV"
           git rev-parse HEAD > "$RUNNER_TEMP/study-review/tested-commit.txt"
@@ -36,6 +40,7 @@ jobs:
         working-directory: web
         run: |
           pnpm install --frozen-lockfile
+          git diff --exit-code -- pnpm-lock.yaml package.json
           pnpm check
           pnpm build
       - uses: actions/setup-go@v6
