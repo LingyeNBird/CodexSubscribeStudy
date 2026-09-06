@@ -1,0 +1,15 @@
+{
+  "frozen_at": "2026-09-06T20:33:30Z",
+  "production_changes_started": false,
+  "primary": "profile_half: per-account short-segment capacity profiling; rounded-endpoint GLS; Student-t4 working loss; learning rate 0.5; drift 0.15",
+  "sensitivity": "same core at drift 0 and 0.4; observed capacity estimates with >=50% relative uncertainty used only in a labelled auxiliary comparison",
+  "development_datasets": {"pilot_01":45,"pilot_02":2800,"pilot_03":1050,"pilot_04":280,"actual_repository_particle_filter":210},
+  "selection_reason": "Development comparisons favor half-power robust profile evidence over directly treating particle/constant capacity estimates as truth. Profile evidence admits all contributions while preserving unknown account scales. No local sample-size or local-rank selection. Auxiliary estimated capacities remain useful but endogenous estimates are not independent labels.",
+  "heldout_evaluation": {"scenarios":25,"truths":7,"repetitions":200,"seed_offset":100000000,"methods":["oracle","constant","lagged","aux_lagged","profile_gaussian","profile_half","profile_half_stress"]},
+  "source_sha256": {
+    "kernel.py":"f487554cf1aaab042a59de130c32adf7f88ed9cb791e303869029012aaf9bfb1",
+    "run.py":"6123cca5ea5c8c2e60a6bb2b9c84782bfc12818cb173d2e040f5d360f8e94a29",
+    "real_filter.py":"c96c16e6d80d8d9312ac0cc5d9a6847c6bc8a2251794bef91a5bd4028258627e"
+  },
+  "caveats":"Profile loss is a working generalized likelihood, not a guarantee of calibrated causal probabilities. All-single-interval/free-capacity and collinear designs remain unidentified; evidence from incomplete inputs is not invented. Wrong controlled assumptions and systematic missing use can bias pooled answers. Report all heldout failures; do not retune on evaluation seeds."
+}
