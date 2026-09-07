@@ -1,0 +1,47 @@
+name: Recover v2 review work
+on:
+  push:
+    branches: [feat/pooled-research-v2]
+    paths: [.github/workflows/recover-v2-review.yml]
+permissions:
+  contents: read
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Export pinned prior work without executing it
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir /tmp/v2-recovery
+          git archive --format=tar.gz HEAD > /tmp/v2-recovery/study-branch.tar.gz
+          python - <<'PY'
+          import base64, hashlib, json, pathlib, subprocess, lzma
+          out = pathlib.Path('/tmp/v2-recovery')
+          blobs = ['11e59b6de191f0ccacf5f09b09abe017414d52cd','49aa715a027f8b95679e6108bf8d5dd7378f9701','211e6382733b8126e251e7813325c2d2a878c56f']
+          dec = lzma.LZMADecompressor()
+          chunks = []
+          result = []
+          for sha in blobs:
+              data = json.loads(subprocess.check_output(['gh','api','repos/LingyeNBird/CodexSubscribeStudy/git/blobs/'+sha]))
+              raw = base64.b64decode(data['content'])
+              assert hashlib.sha1(b'blob '+str(len(raw)).encode()+b'\0'+raw).hexdigest() == sha
+              (out/(sha+'.bin')).write_bytes(raw)
+              try:
+                  for i in range(0, len(raw), 128):
+                      chunks.append(dec.decompress(raw[i:i+128]))
+                  result.append({'sha':sha,'bytes':len(raw),'ok':True})
+              except lzma.LZMAError as exc:
+                  result.append({'sha':sha,'bytes':len(raw),'ok':False,'error':str(exc)})
+                  break
+          (out/'recovered-prefix.txt').write_bytes(b''.join(chunks))
+          (out/'recovery.json').write_text(json.dumps(result,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v2-review-recovery
+          path: /tmp/v2-recovery
+          retention-days: 3
