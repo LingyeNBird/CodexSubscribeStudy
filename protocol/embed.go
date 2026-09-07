@@ -1,4 +1,4 @@
-// Package protocol contains the immutable, versioned research design.
+// Package protocol contains the immutable research design.
 package protocol
 
 import (

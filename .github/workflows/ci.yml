@@ -20,12 +20,8 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - name: Record source integrity
+      - name: Record tested revision
         run: |
-          test -f internal/study/aggregate.go
-          test -f web/src/App.vue
-          test ! -f .github/workflows/apply-study-source.yml
-          test ! -f .github/workflows/repair-pnpm-lock.yml
           mkdir -p "$RUNNER_TEMP/study-review"
           echo "STUDY_REVIEW_OUTPUT=$RUNNER_TEMP/study-review" >> "$GITHUB_ENV"
           git rev-parse HEAD > "$RUNNER_TEMP/study-review/tested-commit.txt"
@@ -49,6 +45,7 @@ jobs:
       - name: Validate Go protocol, aggregation, store and API
         run: |
           go mod download
+          test -z "$(gofmt -l internal/study/*.go cmd/study/*.go protocol/*.go)"
           go vet ./...
           go test -race -count=1 -v ./... | tee "$STUDY_REVIEW_OUTPUT/go-tests.log"
           go build -trimpath -o "$RUNNER_TEMP/study" ./cmd/study

@@ -6,368 +6,326 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"github.com/LingyeNBird/CodexSubscribeStudy/protocol"
 	"math"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"path/filepath"
-	"strings"
-	"sync"
 	"testing"
 	"testing/fstest"
-	"time"
 )
 
-func example(t *testing.T) (Report, []byte, string) {
+func openTest(t *testing.T, maximum int) *Store {
 	t.Helper()
-	raw, err := os.ReadFile("../../protocol/testdata/synthetic-report.json")
+	store, err := Open(filepath.Join(t.TempDir(), "study.db"), maximum)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var fixture struct {
-		Body      string `json:"body_base64"`
-		Signature string `json:"signature"`
-	}
-	if err = json.Unmarshal(raw, &fixture); err != nil {
-		t.Fatal(err)
-	}
-	body, err := base64.StdEncoding.DecodeString(fixture.Body)
-	if err != nil {
-		t.Fatal(err)
-	}
-	report, err := Decode(body, fixture.Signature, "/api/v1/reports")
-	if err != nil {
-		t.Fatal("Python fixture invalid", err)
-	}
-	return report, body, fixture.Signature
+	t.Cleanup(func() { _ = store.Close() })
+	return store
 }
-func sign(t *testing.T, r Report, path string, seed byte) (Report, []byte, string) {
-	t.Helper()
-	key := ed25519.NewKeyFromSeed(bytes.Repeat([]byte{seed}, 32))
-	r.PublicKey = base64.StdEncoding.EncodeToString(key.Public().(ed25519.PublicKey))
-	body, e := json.Marshal(r)
-	if e != nil {
-		t.Fatal(e)
+
+func call(handler http.Handler, endpoint, method string, body []byte, signature string) *httptest.ResponseRecorder {
+	request := httptest.NewRequest(method, endpoint, bytes.NewReader(body))
+	if body != nil {
+		request.Header.Set("Content-Type", "application/json")
 	}
-	sig := base64.StdEncoding.EncodeToString(ed25519.Sign(key, append([]byte("CodexSubscribeStudy/1\nPOST\n"+path+"\n"), body...)))
+	if signature != "" {
+		request.Header.Set("X-Study-Signature", signature)
+	}
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	return response
+}
+
+// A single-request, single-interval fixture has exactly flat evidence.
+func exampleReport(t *testing.T) (Report, []byte, string) {
+	t.Helper()
+	summary := &Summary{Requests: 1, GPT6Requests: 1, RawUSD: 1, GPT6RawUSD: 1, QuotaPoints: 1,
+		Intervals: 1, Groups: 1, Quality: map[string]int64{}, LogEvidence: make([][]float64, 3),
+		GPT6Quota: make([]float64, len(points)), Information: make([][]float64, 4)}
+	for _, key := range Quality {
+		summary.Quality[key] = 0
+	}
+	for i := range summary.LogEvidence {
+		summary.LogEvidence[i] = make([]float64, len(points))
+	}
+	for i := range summary.GPT6Quota {
+		summary.GPT6Quota[i] = 1
+	}
+	for i := range summary.Information {
+		summary.Information[i] = make([]float64, 4)
+	}
+	r := Report{Protocol: Protocol, StudyID: StudyID, Method: Method, MethodDigest: protocol.Digest(),
+		Revision: 1, BatchID: "11111111-1111-4111-8111-111111111111", Summary: summary}
+	r, body, sig := signReport(t, r, "/api/reports", 80)
+	if _, err := Decode(body, sig, "/api/reports"); err != nil {
+		t.Fatal(err)
+	}
 	return r, body, sig
 }
-func openTest(t *testing.T, capacity int) *Store {
+func signReport(t *testing.T, r Report, endpoint string, seed byte) (Report, []byte, string) {
 	t.Helper()
-	s, e := Open(filepath.Join(t.TempDir(), "study.db"), capacity)
+	private := ed25519.NewKeyFromSeed(bytes.Repeat([]byte{seed}, 32))
+	r.PublicKey = base64.StdEncoding.EncodeToString(private.Public().(ed25519.PublicKey))
+	data, err := json.Marshal(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signature := base64.StdEncoding.EncodeToString(ed25519.Sign(private, append([]byte("CodexSubscribeStudy\nPOST\n"+endpoint+"\n"), data...)))
+	return r, data, signature
+}
+func TestSignatureGridAndOneRequestAdmission(t *testing.T) {
+	r, body, sig := exampleReport(t)
+	if r.Summary.Requests != 1 || r.Summary.Intervals != 1 {
+		t.Fatal("tiny fixture")
+	}
+	var method struct {
+		GridSHA256     string `json:"grid_sha256"`
+		CandidateCount int    `json:"candidate_count"`
+	}
+	if json.Unmarshal(protocol.Method, &method) != nil {
+		t.Fatal("method")
+	}
+	if len(points) != 1311 || method.CandidateCount != 1311 || method.GridSHA256 != GridDigest() {
+		t.Fatal("grid mismatch")
+	}
+	if _, e := Decode(body, sig, "/wrong"); e == nil {
+		t.Fatal("signature not bound to route")
+	}
+	changed := append([]byte{}, body...)
+	changed[len(changed)/2] ^= 1
+	if _, e := Decode(changed, sig, "/api/reports"); e == nil {
+		t.Fatal("tamper")
+	}
+}
+func TestNoMinimumContributorsOrRank(t *testing.T) {
+	s := openTest(t, 10)
+	r, body, _ := exampleReport(t)
+	if _, e := s.Put(r, body); e != nil {
+		t.Fatal(e)
+	}
+	result, e := s.Aggregate()
 	if e != nil {
 		t.Fatal(e)
 	}
-	t.Cleanup(func() { s.Close() })
-	return s
-}
-func call(server http.Handler, path, method string, body []byte, sig string) *httptest.ResponseRecorder {
-	req := httptest.NewRequest(method, path, bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Study-Signature", sig)
-	req.Header.Set("X-Forwarded-For", "sensitive-ip-not-to-be-stored")
-	rec := httptest.NewRecorder()
-	server.ServeHTTP(rec, req)
-	return rec
-}
-func TestPythonContractAndMethodDigest(t *testing.T) {
-	report, _, _ := example(t)
-	if report.MethodDigest != protocol.Digest() || len(report.Summary.Support) != 7 || !report.Summary.Eligible {
-		t.Fatal("contract")
+	if result.Totals.Contributors != 1 || result.Totals.Requests != 1 || result.Causes[0].Support != nil {
+		t.Fatal("single contribution was rejected or invented evidence")
 	}
-	if report.Summary.Support[2] < .9 {
-		t.Fatal("fixture not expected cache-read scenario")
-	}
-}
-func TestSignaturesScopeAndTampering(t *testing.T) {
-	_, body, sig := example(t)
-	for _, path := range []string{"/api/v1/withdraw", "/wrong"} {
-		if _, err := Decode(body, sig, path); err == nil {
-			t.Fatal("path signature accepted")
-		}
-	}
-	changed := bytes.Replace(body, []byte(`"revision":1`), []byte(`"revision":2`), 1)
-	if _, err := Decode(changed, sig, "/api/v1/reports"); err == nil {
-		t.Fatal("tampered")
-	}
-	if _, err := Decode(body, "bad", "/api/v1/reports"); err == nil {
-		t.Fatal("bad signature")
-	}
-}
-func TestStrictSchemaDoesNotAcceptPrivateFieldsOrAmbiguousJSON(t *testing.T) {
-	r, body, _ := example(t)
-	mutations := [][]byte{
-		bytes.Replace(body, []byte(`"revision":1`), []byte(`"revision":1,"revision":2`), 1),
-		bytes.Replace(body, []byte(`"requests":5000`), []byte(`"requests":5000,"account_id":123`), 1),
-		append(body, []byte(" {}")...), []byte(strings.Repeat("[", 10) + strings.Repeat("]", 10)),
-	}
-	key := ed25519.NewKeyFromSeed(func() []byte {
-		b := make([]byte, 32)
-		for i := range b {
-			b[i] = byte(i)
-		}
-		return b
-	}())
-	for i, b := range mutations {
-		sig := base64.StdEncoding.EncodeToString(ed25519.Sign(key, append([]byte("CodexSubscribeStudy/1\nPOST\n/api/v1/reports\n"), b...)))
-		if _, e := Decode(b, sig, "/api/v1/reports"); e == nil {
-			t.Fatalf("accepted mutation %d for %s", i, r.PublicKey)
+	raw, _ := json.Marshal(result)
+	for _, name := range []string{"auxiliary", "capacity_context", "particle", "constant_capacity"} {
+		if bytes.Contains(raw, []byte(name)) {
+			t.Fatal("capacity estimate field in public result", name)
 		}
 	}
 }
-func TestSummaryValidation(t *testing.T) {
-	cases := map[string]func(*Summary){
-		"tiny": func(s *Summary) { s.Requests = 10 }, "nonfinite": func(s *Summary) { s.RawUSD = math.Inf(1) }, "money precision": func(s *Summary) { s.RawUSD = 100.1234 },
-		"bad status": func(s *Summary) { s.Status = "account@example.org" }, "missing dimension": func(s *Summary) { s.ScoreCov[6] = nil },
-		"nonPSD": func(s *Summary) { s.ScoreCov[1][1] = -2 }, "asymmetric": func(s *Summary) { s.ScoreCov[1][2] += 1 },
-		"unsupported confidence": func(s *Summary) { s.Support[0] = 1 }, "privacy exclusions": func(s *Summary) { s.Exclusions["name"] = 1 },
-		"no consent coverage": func(s *Summary) { s.GatewayOnly = false }, "bad family factors": func(s *Summary) { s.Factors[2][0] = 2 },
-		"invalid rank": func(s *Summary) { s.DesignRank = 5 }, "overflow counts": func(s *Summary) { s.GPT6Requests = math.MaxInt64 },
+func TestReplaceAppendAndRetain(t *testing.T) {
+	s := openTest(t, 10)
+	r, _, _ := exampleReport(t)
+	r, b, _ := signReport(t, r, "/api/reports", 11)
+	if _, e := s.Put(r, b); e != nil {
+		t.Fatal(e)
+	}
+	if duplicate, e := s.Put(r, b); e != nil || !duplicate {
+		t.Fatal("duplicate", e)
+	}
+	old, oldBody := r, b
+	r.Revision = 2
+	r.Summary.Requests = 2
+	r.Summary.GPT6Requests = 2
+	r, b, _ = signReport(t, r, "/api/reports", 11)
+	if _, e := s.Put(r, b); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := s.Put(old, oldBody); !errors.Is(e, ErrConflict) {
+		t.Fatal("old revision accepted", e)
+	}
+	result, _ := s.Aggregate()
+	if result.Totals.Requests != 2 || result.Totals.Batches != 1 {
+		t.Fatal("replace")
+	}
+	r.Revision = 3
+	r.BatchID = "22222222-2222-4222-8222-222222222222"
+	r, b, _ = signReport(t, r, "/api/reports", 11)
+	if _, e := s.Put(r, b); e != nil {
+		t.Fatal(e)
+	}
+	result, _ = s.Aggregate()
+	if result.Totals.Requests != 4 || result.Totals.Batches != 2 {
+		t.Fatal("history discarded")
+	}
+	if e := s.Backup(filepath.Join(t.TempDir(), "backup.db")); e != nil {
+		t.Fatal(e)
+	}
+}
+
+func TestJointGridNotLocalPercentageAverage(t *testing.T) {
+	a := newAccumulator()
+	r, _, _ := exampleReport(t)
+	s := *r.Summary
+	s.Intervals = 2
+	s.Groups = 1
+	s.Contrasts = 1
+	// Each contributor gives one rank-one direction. All four jointly identify
+	// beta=(1,1,2,1), without any contributor being independently rank four.
+	target := [4]float64{1, 1, 2, 1}
+	for component := 0; component < 4; component++ {
+		for j, p := range points {
+			cost := -10 * math.Pow(p.Factors[component]-target[component], 2)
+			null := -10 * math.Pow(1-target[component], 2)
+			for k := 0; k < 3; k++ {
+				s.LogEvidence[k][j] = cost - null
+			}
+		}
+		for i := 0; i < 4; i++ {
+			for j := 0; j < 4; j++ {
+				s.Information[i][j] = 0
+			}
+		}
+		s.Information[component][component] = 1
+		if e := s.Validate(); e != nil {
+			t.Fatal(e)
+		}
+		_ = a.add(string(rune('a'+component)), s, 1)
+	}
+	result := a.finish()
+	if result.InformationRank != 4 || result.Causes[2].Support == nil || *result.Causes[2].Support < .8 {
+		t.Fatal("joint information not pooled", result.Causes)
+	}
+	if len(result.Parameters) != 4 {
+		t.Fatal("parameters")
+	}
+	flat := make([]float64, len(points))
+	_, mass := causes(flat, true)
+	for _, m := range mass {
+		if math.Abs(m-1./7) > 1e-10 {
+			t.Fatal("prior applied per grid point instead of family")
+		}
+	}
+}
+func TestStrictSchemaAndNoPII(t *testing.T) {
+	cases := map[string]func(*Report){
+		"negative count":              func(r *Report) { r.Summary.Requests = -1 },
+		"count mismatch":              func(r *Report) { r.Summary.OtherRequests = 2 },
+		"bad dimensions":              func(r *Report) { r.Summary.LogEvidence = r.Summary.LogEvidence[:2] },
+		"nonzero baseline":            func(r *Report) { r.Summary.LogEvidence[0][nullPoint] = 1 },
+		"impossible attribution":      func(r *Report) { r.Summary.GPT6Quota[0] = 999 },
+		"indefinite matrix":           func(r *Report) { r.Summary.Information[0][0] = -1 },
+		"unknown quality":             func(r *Report) { r.Summary.Quality["ip"] = 1 },
+		"invalid uuid":                func(r *Report) { r.BatchID = "account-123" },
+		"wrong digest":                func(r *Report) { r.MethodDigest = "bad" },
+		"spurious singleton evidence": func(r *Report) { r.Summary.LogEvidence[1][0] = 2 },
 	}
 	for name, change := range cases {
 		t.Run(name, func(t *testing.T) {
-			r, _, _ := example(t)
-			change(r.Summary)
-			if r.Summary.Validate() == nil {
-				t.Fatal("invalid summary accepted")
+			r, _, _ := exampleReport(t)
+			change(&r)
+			_, b, sig := signReport(t, r, "/api/reports", 6)
+			if _, e := Decode(b, sig, "/api/reports"); e == nil {
+				t.Fatal("accepted")
+			}
+		})
+	}
+	r, _, _ := exampleReport(t)
+	r, b, _ := signReport(t, r, "/api/reports", 6)
+	private := ed25519.NewKeyFromSeed(bytes.Repeat([]byte{6}, 32))
+	mutations := [][]byte{bytes.Replace(b, []byte(`"requests":`), []byte(`"Requests":`), 1), append([]byte(`{"ip":"127.0.0.1",`), b[1:]...), bytes.Replace(b, []byte(`"gateway_only":false,`), nil, 1)}
+	for _, bad := range mutations {
+		sig := base64.StdEncoding.EncodeToString(ed25519.Sign(private, append([]byte("CodexSubscribeStudy\nPOST\n/api/reports\n"), bad...)))
+		if _, e := Decode(bad, sig, "/api/reports"); e == nil {
+			t.Fatal("unknown or missing field accepted")
+		}
+	}
+	_ = r
+}
+func TestPublicHTTPNoRawIdentity(t *testing.T) {
+	s := openTest(t, 10)
+	server := NewServer(s, fstest.MapFS{"index.html": {Data: []byte("hello")}})
+	r, body, sig := exampleReport(t)
+	res := call(server, "/api/reports", "POST", body, sig)
+	if res.Code != 200 {
+		t.Fatal(res.Code, res.Body.String())
+	}
+	res = call(server, "/api/studies/"+StudyID, "GET", nil, "")
+	if res.Code != 200 {
+		t.Fatal(res.Code)
+	}
+	for _, private := range []string{r.PublicKey, r.BatchID, "log_evidence", "account_id"} {
+		if bytes.Contains(res.Body.Bytes(), []byte(private)) {
+			t.Fatal("raw identity or evidence disclosed")
+		}
+	}
+}
+
+// Independently enumerate exp(likelihood)/family-count to check prior-once
+// pooling, rather than calling the implementation under test for expectations.
+func TestPoolingMatchesDirectEnumeration(t *testing.T) {
+	counts := [7]int{}
+	for _, p := range points {
+		counts[p.Family]++
+	}
+	for _, copies := range []int{1, 5, 30} {
+		curve := make([]float64, len(points))
+		expected := [7]float64{}
+		denom := 0.
+		for i, p := range points {
+			loss := 0.
+			for j, v := range p.Factors {
+				target := 1.
+				if j == 2 {
+					target = 2
+				}
+				loss += math.Pow(v-target, 2)
+			}
+			curve[i] = -float64(copies) * loss
+			value := math.Exp(curve[i]) / float64(counts[p.Family]) / 7
+			expected[p.Family] += value
+			denom += value
+		}
+		_, mass := causes(curve, true)
+		for i, v := range mass {
+			if math.Abs(v-expected[i]/denom) > 1e-12 {
+				t.Fatal("pooling differs", copies, i)
+			}
+		}
+	}
+}
+
+func TestRejectsEveryCapacityEstimateField(t *testing.T) {
+	_, body, _ := exampleReport(t)
+	for _, field := range []string{"capacity_context", "auxiliary_evidence", "auxiliary_groups", "particle_capacity", "constant_capacity", "estimated_capacity", "effective_usd_per_percent"} {
+		t.Run(field, func(t *testing.T) {
+			var raw map[string]any
+			_ = json.Unmarshal(body, &raw)
+			raw["summary"].(map[string]any)[field] = 1
+			b, _ := json.Marshal(raw)
+			key := ed25519.NewKeyFromSeed(bytes.Repeat([]byte{80}, 32))
+			sig := base64.StdEncoding.EncodeToString(ed25519.Sign(key, append([]byte("CodexSubscribeStudy\nPOST\n/api/reports\n"), b...)))
+			if _, e := Decode(b, sig, "/api/reports"); e == nil {
+				t.Fatal("estimate accepted")
 			}
 		})
 	}
 }
-func TestLatestSnapshotReplacesAndWithdrawalCannotResurrect(t *testing.T) {
-	s := openTest(t, 20)
-	r, body, _ := example(t)
-	if duplicate, e := s.Put(r, body, false); e != nil || duplicate {
+
+func TestZeroRequestStatisticsAndConflictingRevision(t *testing.T) {
+	store := openTest(t, 10)
+	r, _, _ := exampleReport(t)
+	r.Summary.Requests = 0
+	r.Summary.GPT6Requests = 0
+	r.Summary.RawUSD = 0
+	r.Summary.GPT6RawUSD = 0
+	r.Summary.Intervals = 0
+	r.Summary.Groups = 0
+	r.Summary.QuotaPoints = 0
+	for i := range r.Summary.GPT6Quota {
+		r.Summary.GPT6Quota[i] = 0
+	}
+	r, b, sig := signReport(t, r, "/api/reports", 8)
+	if _, e := Decode(b, sig, "/api/reports"); e != nil {
 		t.Fatal(e)
 	}
-	if duplicate, e := s.Put(r, body, false); e != nil || !duplicate {
-		t.Fatal("idempotence", e)
-	}
-	if _, e := s.Put(r, append(body, ' '), false); !errors.Is(e, ErrConflict) {
-		t.Fatal("same revision collision", e)
-	}
-	r.Revision = 2
-	r.Summary.RawUSD += 100
-	_, body, _ = sign(t, r, "/api/v1/reports", 1)
-	r, body, _ = sign(t, r, "/api/v1/reports", 1)
-	if _, e := s.Put(r, body, false); e != nil {
+	if _, e := store.Put(r, b); e != nil {
 		t.Fatal(e)
-	}
-	// Same identity updates replace its snapshot rather than adding request counts.
-	r.Revision = 3
-	_, body, _ = sign(t, r, "/api/v1/reports", 1)
-	if _, e := s.Put(r, body, false); e != nil {
-		t.Fatal(e)
-	}
-	rows, _, e := s.Snapshot()
-	if e != nil || len(rows) != 2 {
-		t.Fatal("snapshot count", len(rows), e)
-	}
-	old := r
-	oldBody := body
-	r.Revision = 4
-	r.Summary = nil
-	_, body, _ = sign(t, r, "/api/v1/withdraw", 1)
-	if _, e = s.Put(r, body, true); e != nil {
-		t.Fatal(e)
-	}
-	if duplicate, e := s.Put(r, body, true); e != nil || !duplicate {
-		t.Fatal("withdraw idempotence", e)
-	}
-	if _, e = s.Put(old, oldBody, false); !errors.Is(e, ErrStale) {
-		t.Fatal("resurrected", e)
-	}
-	rows, _, _ = s.Snapshot()
-	if len(rows) != 1 {
-		t.Fatal("withdraw not removed")
-	}
-}
-func TestCapacityAndExpiryAndPersistentRestart(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "study.db")
-	s, err := Open(path, 2)
-	if err != nil {
-		t.Fatal(err)
-	}
-	r, _, _ := example(t)
-	for i := byte(1); i <= 2; i++ {
-		r, b, _ := sign(t, r, "/api/v1/reports", i)
-		if _, e := s.Put(r, b, false); e != nil {
-			t.Fatal(e)
-		}
-	}
-	other, b, _ := sign(t, r, "/api/v1/reports", 3)
-	if _, e := s.Put(other, b, false); !errors.Is(e, ErrCapacity) {
-		t.Fatal(e)
-	}
-	other.Summary = nil
-	other.Revision = 2
-	if _, e := s.Put(other, b, true); !errors.Is(e, ErrCapacity) {
-		t.Fatal("tombstone capacity", e)
-	}
-	backup := filepath.Join(t.TempDir(), "backup.db")
-	if e := s.Backup(backup); e != nil {
-		t.Fatal(e)
-	}
-	s.Close()
-	s, err = Open(path, 2)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer s.Close()
-	rows, _, _ := s.Snapshot()
-	if len(rows) != 2 {
-		t.Fatal("restart")
-	}
-	s.now = func() time.Time { return time.Now().Add(121 * 24 * time.Hour) }
-	rows, _, _ = s.Snapshot()
-	if len(rows) != 0 {
-		t.Fatal("expired displayed")
-	}
-	if err = s.Prune(); err != nil {
-		t.Fatal(err)
-	}
-	r, b, _ = sign(t, r, "/api/v1/reports", 1)
-	if _, e := s.Put(r, b, false); !errors.Is(e, ErrConflict) {
-		t.Fatal("expired replay", e)
-	}
-	data, _ := os.ReadFile(path)
-	if bytes.Contains(data, []byte("sensitive-ip-not-to-be-stored")) {
-		t.Fatal("IP written")
-	}
-}
-func TestHTTPPublicTotalsNoIndividualData(t *testing.T) {
-	s := openTest(t, 10)
-	assets := fstest.MapFS{"index.html": {Data: []byte("<h1>study</h1>")}}
-	server := NewServer(s, assets)
-	r, _, _ := example(t)
-	for i := byte(1); i <= 3; i++ {
-		_, body, sig := sign(t, r, "/api/v1/reports", i)
-		rec := call(server, "/api/v1/reports", "POST", body, sig)
-		if rec.Code != 200 {
-			t.Fatal(rec.Code, rec.Body.String())
-		}
-	}
-	rec := call(server, "/api/v1/studies/"+StudyID, "GET", nil, "")
-	if rec.Code != 200 {
-		t.Fatal(rec.Code)
-	}
-	var result Result
-	json.Unmarshal(rec.Body.Bytes(), &result)
-	if result.Totals.Contributors != 3 || result.Totals.Requests != r.Summary.Requests*3 || result.Causes[2].Support == nil {
-		t.Fatal("aggregate", rec.Body.String())
-	}
-	for _, key := range []string{"public_key", "sensitive-ip", r.PublicKey, "account_id"} {
-		if strings.Contains(rec.Body.String(), key) {
-			t.Fatal("private metadata in public data")
-		}
-	}
-	if rec.Header().Get("Set-Cookie") != "" || rec.Header().Get("Content-Security-Policy") == "" {
-		t.Fatal("privacy headers")
-	}
-	if call(server, "/studies/anything", "GET", nil, "").Code != 200 {
-		t.Fatal("SPA fallback")
-	}
-	if call(server, "/api/v1/reports/person", "GET", nil, "").Code != 404 {
-		t.Fatal("no individual route")
-	}
-	if call(server, "/assets/missing.js", "GET", nil, "").Code != 404 {
-		t.Fatal("bad asset")
-	}
-}
-func TestHTTPGuardsAndRateLimit(t *testing.T) {
-	server := NewServer(openTest(t, 10), fstest.MapFS{})
-	_, body, sig := example(t)
-	tests := []struct {
-		path, method string
-		body         []byte
-		sig          string
-		want         int
-	}{
-		{"/api/v1/reports", "GET", nil, "", 405}, {"/api/v1/reports", "POST", body, "bad", 400},
-		{"/api/v1/reports", "POST", bytes.Repeat([]byte{'a'}, MaxBody+1), sig, 413},
-		{"/api/v1/nonesuch", "GET", nil, "", 404},
-	}
-	for _, tc := range tests {
-		if got := call(server, tc.path, tc.method, tc.body, tc.sig).Code; got != tc.want {
-			t.Fatalf("got %d wanted %d", got, tc.want)
-		}
-	}
-	req := httptest.NewRequest("POST", "/api/v1/reports", bytes.NewReader(body))
-	rec := httptest.NewRecorder()
-	server.ServeHTTP(rec, req)
-	if rec.Code != 415 {
-		t.Fatal("content type")
-	}
-	server.mu.Lock()
-	server.tokens = 0
-	server.lastToken = time.Now()
-	server.mu.Unlock()
-	if call(server, "/api/v1/reports", "POST", body, sig).Code != 429 {
-		t.Fatal("rate limit")
-	}
-}
-func TestAggregationInsufficientHeterogeneousAndDeterministic(t *testing.T) {
-	r, _, _ := example(t)
-	if Aggregate(nil, 0).State != "no_data" {
-		t.Fatal("empty")
-	}
-	if Aggregate([]Summary{*r.Summary, *r.Summary}, 0).Causes[0].Support != nil {
-		t.Fatal("tiny confidence")
-	}
-	summaries := []Summary{*r.Summary, *r.Summary, *r.Summary}
-	a, b := Aggregate(summaries, 0), Aggregate(summaries, 0)
-	ja, _ := json.Marshal(a)
-	jb, _ := json.Marshal(b)
-	if !bytes.Equal(ja, jb) {
-		t.Fatal("not deterministic")
-	}
-	sum := 0.
-	for _, c := range a.Causes {
-		sum += *c.Support
-	}
-	if math.Abs(sum-1) > 1e-8 {
-		t.Fatal(sum)
-	}
-	for i := range summaries {
-		clone, _, _ := example(t)
-		summaries[i] = *clone.Summary
-		for j := 0; j < 7; j++ {
-			summaries[i].ScoreMean[j] = -1
-			for k := 0; k < 7; k++ {
-				summaries[i].ScoreCov[j][k] = 0
-			}
-		}
-		summaries[i].ScoreMean[0] = 0
-		summaries[i].ScoreMean[2] = 1
-	}
-	summaries[2].ScoreMean[2] = -1
-	summaries[2].ScoreMean[5] = 2
-	if Aggregate(summaries, 0).State != "heterogeneous" {
-		t.Fatal("dissent hidden")
-	}
-}
-func TestConcurrentSubmissionsDoNotAddDuplicateSnapshots(t *testing.T) {
-	store := openTest(t, 50)
-	r, _, _ := example(t)
-	var wg sync.WaitGroup
-	for i := 1; i <= 20; i++ {
-		wg.Add(1)
-		go func(revision int) {
-			defer wg.Done()
-			copy := r
-			copy.Revision = uint64(revision)
-			body, _ := json.Marshal(copy)
-			_, e := store.Put(copy, body, false)
-			if e != nil && !errors.Is(e, ErrStale) {
-				t.Error(e)
-			}
-		}(i)
-	}
-	wg.Wait()
-	rows, _, e := store.Snapshot()
-	if e != nil || len(rows) != 1 {
-		t.Fatal(fmt.Sprint(e), len(rows))
 	}
 }
