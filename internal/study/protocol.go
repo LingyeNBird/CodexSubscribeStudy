@@ -3,48 +3,44 @@ package study
 import (
 	"bytes"
 	"crypto/ed25519"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"math"
+	"regexp"
+	"sort"
 	"unicode/utf8"
 
 	"github.com/LingyeNBird/CodexSubscribeStudy/protocol"
 )
 
-const Protocol = "codex-cost-study/1"
+const Protocol = "codex-cost-study"
 const StudyID = "gpt6-components"
-const Method = "log-capacity-loco/1"
-const MaxBody = 32768
+const Method = "pooled-profile/raw-only"
+const MaxBody = 262144
 
-var Families = []string{"unchanged", "global", "cache_read", "cache_creation", "output", "input", "mixed"}
-var Labels = []string{"无需额外倍率", "整体倍率", "缓存读倍率", "缓存创建倍率", "输出倍率", "输入倍率", "混合倍率"}
-var Exclusions = []string{"missing_snapshot_time", "snapshot_conflict", "excluded_observation", "reset_or_saturation", "insufficient_progress", "capture_gap", "invalid_capture", "missing_components", "nonstandard_request", "other_model", "cost_mismatch", "insufficient_cycle", "resource_limit"}
-var statuses = map[string]bool{"insufficient_data": true, "unidentifiable": true, "model_mismatch": true, "drift_sensitive": true, "exploratory": true, "external_usage_uncontrolled": true}
+var Quality = []string{"missing_snapshot", "capture_gap", "missing_components", "unknown_control", "invalid_fact", "reset_or_saturation", "zero_progress", "external_usage_uncontrolled", "archived_source", "resource_limit"}
+var uuidPattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
 
-// No free-text, per-request/interval data, IP, account or participant fields.
 type Summary struct {
-	WindowDays       int              `json:"window_days"`
-	Requests         int64            `json:"requests"`
-	BaselineRequests int64            `json:"baseline_requests"`
-	GPT6Requests     int64            `json:"gpt6_requests"`
-	RawUSD           float64          `json:"raw_usd"`
-	GPT6RawUSD       float64          `json:"gpt6_raw_usd"`
-	QuotaPoints      float64          `json:"quota_points"`
-	Cycles           int              `json:"cycles"`
-	Blocks           int              `json:"blocks"`
-	Eligible         bool             `json:"eligible"`
-	GatewayOnly      bool             `json:"gateway_only"`
-	Status           string           `json:"status"`
-	Identifiable     []bool           `json:"identifiable"`
-	DesignRank       int              `json:"design_rank"`
-	Exclusions       map[string]int64 `json:"exclusions"`
-	ScoreMean        []float64        `json:"score_mean"`
-	ScoreCov         [][]float64      `json:"score_cov"`
-	Support          []float64        `json:"support"`
-	Factors          [][]float64      `json:"factor_estimates"`
+	Requests      int64            `json:"requests"`
+	GPT6Requests  int64            `json:"gpt6_requests"`
+	OtherRequests int64            `json:"other_requests"`
+	RawUSD        float64          `json:"raw_usd"`
+	GPT6RawUSD    float64          `json:"gpt6_raw_usd"`
+	QuotaPoints   float64          `json:"quota_points"`
+	Intervals     int64            `json:"intervals"`
+	Groups        int64            `json:"groups"`
+	Contrasts     int64            `json:"contrasts"`
+	GatewayOnly   bool             `json:"gateway_only"`
+	Quality       map[string]int64 `json:"quality"`
+	LogEvidence   [][]float64      `json:"log_evidence"`
+	GPT6Quota     []float64        `json:"gpt6_quota"`
+	Information   [][]float64      `json:"information"`
 }
 
 type Report struct {
@@ -54,11 +50,102 @@ type Report struct {
 	MethodDigest string   `json:"method_digest"`
 	PublicKey    string   `json:"public_key"`
 	Revision     uint64   `json:"revision"`
-	Summary      *Summary `json:"summary,omitempty"`
+	BatchID      string   `json:"batch_id"`
+	Summary      *Summary `json:"summary"`
 }
 
-// rejectDuplicates prevents ambiguous signed JSON interpretation, including
-// duplicate keys nested in a summary. It also bounds JSON nesting depth.
+type gridPoint struct {
+	Factors [4]float64
+	Family  int
+}
+
+var points, nullPoint = makeGrid()
+
+func makeGrid() ([]gridPoint, int) {
+	values := []float64{.5, 1, 1.5, 1.75, 2, 3}
+	set := map[[4]float64]bool{}
+	for _, a := range values {
+		for _, b := range values {
+			for _, c := range values {
+				for _, d := range values {
+					set[[4]float64{a, b, c, d}] = true
+				}
+			}
+		}
+	}
+	for _, v := range []float64{1.25, 1.8, 2.5} {
+		set[[4]float64{v, v, v, v}] = true
+		for j := 0; j < 4; j++ {
+			p := [4]float64{1, 1, 1, 1}
+			p[j] = v
+			set[p] = true
+		}
+	}
+	result := make([]gridPoint, 0, len(set))
+	for p := range set {
+		result = append(result, gridPoint{Factors: p})
+	}
+	sort.Slice(result, func(i, j int) bool {
+		for k := 0; k < 4; k++ {
+			if result[i].Factors[k] != result[j].Factors[k] {
+				return result[i].Factors[k] < result[j].Factors[k]
+			}
+		}
+		return false
+	})
+	null := 0
+	for i := range result {
+		p := result[i].Factors
+		count, index := 0, 0
+		for j, v := range p {
+			if v != 1 {
+				count++
+				index = j
+			}
+		}
+		family := 6
+		if count == 0 {
+			family = 0
+			null = i
+		} else if p[0] == p[1] && p[1] == p[2] && p[2] == p[3] {
+			family = 1
+		} else if count == 1 {
+			family = []int{5, 3, 2, 4}[index]
+		}
+		result[i].Family = family
+	}
+	return result, null
+}
+func GridDigest() string {
+	h := sha256.New()
+	var data [33]byte
+	for _, p := range points {
+		for j, v := range p.Factors {
+			binary.LittleEndian.PutUint64(data[j*8:], math.Float64bits(v))
+		}
+		data[32] = byte(p.Family)
+		_, _ = h.Write(data[:])
+	}
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+// Validate exact field spelling/presence as well as duplicate keys. encoding/json
+// alone accepts case-insensitive aliases; signed scientific payloads must not.
+func exactKeys(raw json.RawMessage, keys []string) error {
+	var object map[string]json.RawMessage
+	if json.Unmarshal(raw, &object) != nil || len(object) != len(keys) {
+		return errors.New("fields")
+	}
+	for _, key := range keys {
+		value, ok := object[key]
+		if !ok || bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
+			return errors.New("missing field")
+		}
+	}
+	return nil
+}
+
+// rejectDuplicates prevents ambiguous signed JSON interpretation and bounds nesting.
 func rejectDuplicates(dec *json.Decoder, depth int) error {
 	if depth > 8 {
 		return errors.New("nesting")
@@ -100,159 +187,197 @@ func rejectDuplicates(dec *json.Decoder, depth int) error {
 	_, err = dec.Token()
 	return err
 }
-
 func Decode(body []byte, signature, path string) (Report, error) {
-	var report Report
-	if path != "/api/v1/reports" {
-		return report, errors.New("path")
-	}
+	var r Report
 	if len(body) > MaxBody || !utf8.Valid(body) {
-		return report, errors.New("body")
+		return r, errors.New("body")
+	}
+	if path != "/api/reports" {
+		return r, errors.New("path")
 	}
 	scan := json.NewDecoder(bytes.NewReader(body))
 	scan.UseNumber()
 	if err := rejectDuplicates(scan, 0); err != nil {
-		return report, err
+		return r, err
 	}
 	if _, err := scan.Token(); err != io.EOF {
-		return report, errors.New("trailing JSON")
+		return r, errors.New("trailing")
+	}
+	keys := []string{"protocol", "study_id", "method", "method_digest", "public_key", "revision", "batch_id", "summary"}
+	if err := exactKeys(body, keys); err != nil {
+		return r, err
 	}
 	dec := json.NewDecoder(bytes.NewReader(body))
 	dec.DisallowUnknownFields()
-	if err := dec.Decode(&report); err != nil {
-		return report, errors.New("schema")
+	if dec.Decode(&r) != nil {
+		return r, errors.New("schema")
 	}
-	if report.Protocol != Protocol || report.StudyID != StudyID || report.Method != Method || report.MethodDigest != protocol.Digest() {
-		return report, errors.New("version")
+	if r.Protocol != Protocol || r.StudyID != StudyID || r.Method != Method || r.MethodDigest != protocol.Digest() {
+		return r, errors.New("contract")
 	}
-	if report.Revision == 0 || report.Revision > 9007199254740991 {
-		return report, errors.New("revision")
+	if r.Revision == 0 || r.Revision > 9007199254740991 {
+		return r, errors.New("revision")
 	}
-	key, err := base64.StdEncoding.Strict().DecodeString(report.PublicKey)
-	if err != nil || len(key) != ed25519.PublicKeySize || base64.StdEncoding.EncodeToString(key) != report.PublicKey {
-		return report, errors.New("identity")
+	key, err := base64.StdEncoding.Strict().DecodeString(r.PublicKey)
+	if err != nil || len(key) != 32 || base64.StdEncoding.EncodeToString(key) != r.PublicKey {
+		return r, errors.New("identity")
 	}
 	sig, err := base64.StdEncoding.Strict().DecodeString(signature)
-	if err != nil || len(sig) != ed25519.SignatureSize {
-		return report, errors.New("signature")
+	if err != nil || len(sig) != 64 {
+		return r, errors.New("signature")
 	}
-	signed := append([]byte("CodexSubscribeStudy/1\nPOST\n"+path+"\n"), body...)
-	if !ed25519.Verify(ed25519.PublicKey(key), signed, sig) {
-		return report, errors.New("signature")
+	if !ed25519.Verify(key, append([]byte("CodexSubscribeStudy\nPOST\n"+path+"\n"), body...), sig) {
+		return r, errors.New("signature")
 	}
-	if report.Summary == nil {
-		return report, errors.New("summary required")
+	if !uuidPattern.MatchString(r.BatchID) || r.Summary == nil {
+		return r, errors.New("batch")
 	}
-	return report, report.Summary.Validate()
+	var raw map[string]json.RawMessage
+	_ = json.Unmarshal(body, &raw)
+	skeys := []string{"requests", "gpt6_requests", "other_requests", "raw_usd", "gpt6_raw_usd", "quota_points", "intervals", "groups", "contrasts", "gateway_only", "quality", "log_evidence", "gpt6_quota", "information"}
+	if err := exactKeys(raw["summary"], skeys); err != nil {
+		return r, err
+	}
+	return r, r.Summary.Validate()
 }
 
-func finite(v, lo, hi float64) bool { return !math.IsNaN(v) && !math.IsInf(v, 0) && v >= lo && v <= hi }
+func finite(value, low, high float64) bool {
+	return !math.IsNaN(value) && !math.IsInf(value, 0) && value >= low && value <= high
+}
+
 func (s *Summary) Validate() error {
-	if s.WindowDays != 90 || s.Requests < 200 || s.Requests > 1e9 || s.BaselineRequests < 0 || s.GPT6Requests < 0 || s.BaselineRequests > s.Requests || s.GPT6Requests > s.Requests || s.BaselineRequests+s.GPT6Requests != s.Requests {
+	if s.Requests < 0 || s.Requests > 1e12 || s.GPT6Requests < 0 || s.OtherRequests < 0 || s.GPT6Requests > s.Requests || s.OtherRequests > s.Requests || s.GPT6Requests+s.OtherRequests != s.Requests {
 		return errors.New("counts")
 	}
-	if !finite(s.RawUSD, 0, 1e12) || !finite(s.GPT6RawUSD, 0, s.RawUSD) || !finite(s.QuotaPoints, 0, 140000) || s.Cycles < 1 || s.Cycles > 1400 || s.Blocks < s.Cycles*8 || s.Blocks > 50000 || s.DesignRank < 0 || s.DesignRank > 4 {
+	if !finite(s.RawUSD, 0, 1e15) || !finite(s.GPT6RawUSD, 0, s.RawUSD+1e-8) || !finite(s.QuotaPoints, 0, 1e9) || s.Intervals < 0 || s.Intervals > 1e7 || s.Groups < 0 || s.Groups > s.Intervals || s.Contrasts != s.Intervals-s.Groups {
 		return errors.New("totals")
 	}
-	if s.RawUSD != math.Trunc(s.RawUSD) || s.GPT6RawUSD != math.Trunc(s.GPT6RawUSD) {
-		return errors.New("cost rounding")
-	}
-	if !statuses[s.Status] || len(s.Identifiable) != 4 || len(s.ScoreMean) != 7 || len(s.ScoreCov) != 7 || len(s.Support) != 7 || len(s.Factors) != 7 {
-		return errors.New("dimensions")
-	}
-	if s.Eligible != (s.Status == "exploratory") {
-		return errors.New("eligibility")
-	}
-	if s.Eligible && (!s.GatewayOnly || s.Cycles < 2 || s.Blocks < 24 || s.BaselineRequests < 50 || s.GPT6Requests < 50 || s.DesignRank == 0) {
+	if len(s.Quality) != len(Quality) {
 		return errors.New("quality")
 	}
-	if len(s.Exclusions) != len(Exclusions) {
-		return errors.New("exclusions")
-	}
-	for _, key := range Exclusions {
-		v, ok := s.Exclusions[key]
-		if !ok || v < 0 || v > 1e9 {
-			return errors.New("exclusions")
+	for _, key := range Quality {
+		v, ok := s.Quality[key]
+		if !ok || v < 0 || v > 1e12 {
+			return errors.New("quality")
 		}
 	}
-	sum := 0.0
-	for i := 0; i < 7; i++ {
-		if !finite(s.ScoreMean[i], -4, 4) || !finite(s.Support[i], 0, 1) || len(s.ScoreCov[i]) != 7 || len(s.Factors[i]) != 4 {
-			return errors.New("scores")
+	if len(s.LogEvidence) != 3 || len(s.GPT6Quota) != len(points) || len(s.Information) != 4 {
+		return errors.New("dimensions")
+	}
+	for _, curve := range s.LogEvidence {
+		if len(curve) != len(points) || math.Abs(curve[nullPoint]) > 1e-7 {
+			return errors.New("curve")
 		}
-		sum += s.Support[i]
-		for j, v := range s.ScoreCov[i] {
-			if !finite(v, -64, 64) {
-				return errors.New("covariance")
-			}
-			if len(s.ScoreCov[j]) != 7 || math.Abs(v-s.ScoreCov[j][i]) > 1e-7 {
-				return errors.New("symmetry")
-			}
-		}
-		for _, f := range s.Factors[i] {
-			if !finite(f, .5, 3) {
-				return errors.New("factors")
+		for _, v := range curve {
+			if !finite(v, -1e10, 1e10) {
+				return errors.New("curve")
 			}
 		}
 	}
-	for _, v := range s.ScoreCov[0] {
-		if math.Abs(v) > 1e-7 {
-			return errors.New("baseline covariance")
+	for _, v := range s.GPT6Quota {
+		if !finite(v, 0, s.QuotaPoints+1e-7) {
+			return errors.New("quota")
 		}
 	}
-	if math.Abs(s.ScoreMean[0]) > 1e-8 {
-		return errors.New("baseline")
-	}
-	if (s.Eligible && math.Abs(sum-1) > 1e-5) || (!s.Eligible && sum != 0) {
-		return errors.New("support")
-	}
-	if _, err := cholesky(s.ScoreCov); err != nil {
-		return err
-	}
-	for _, v := range s.Factors[0] {
-		if v != 1 {
-			return errors.New("null factors")
+	for i, row := range s.Information {
+		if len(row) != 4 {
+			return errors.New("information")
+		}
+		for j, v := range row {
+			if !finite(v, -1e16, 1e16) || len(s.Information[j]) != 4 || math.Abs(v-s.Information[j][i]) > 1e-7 {
+				return errors.New("information")
+			}
 		}
 	}
-	for _, v := range s.Factors[1] {
-		if math.Abs(v-s.Factors[1][0]) > .0001 {
-			return errors.New("global factors")
+	eigen := eigenvalues4(s.Information)
+	for _, v := range eigen {
+		if v < -1e-6 {
+			return errors.New("information PSD")
 		}
 	}
-	for family, active := range map[int]int{2: 2, 3: 1, 4: 3, 5: 0} {
-		for j, v := range s.Factors[family] {
-			if j != active && v != 1 {
-				return errors.New("single factors")
+	if s.Intervals == 0 {
+		if s.QuotaPoints != 0 {
+			return errors.New("empty intervals")
+		}
+	}
+	if s.Intervals > 0 && s.Groups == 0 {
+		return errors.New("groups")
+	}
+	if s.Intervals > s.Groups*32 {
+		return errors.New("group size")
+	}
+	if s.Contrasts == 0 {
+		for _, curve := range s.LogEvidence {
+			for _, v := range curve {
+				if v != 0 {
+					return errors.New("unidentified group")
+				}
+			}
+		}
+	}
+	if s.Contrasts == 0 {
+		for _, row := range s.Information {
+			for _, v := range row {
+				if v != 0 {
+					return errors.New("unidentified information")
+				}
+			}
+		}
+	}
+	if s.GPT6Requests == 0 {
+		for _, v := range s.GPT6Quota {
+			if v != 0 {
+				return errors.New("target quota without target requests")
+			}
+		}
+		for _, curve := range s.LogEvidence {
+			for _, v := range curve {
+				if v != 0 {
+					return errors.New("target evidence without target requests")
+				}
 			}
 		}
 	}
 	return nil
 }
 
-// PSD covariance with a tiny fixed tolerance for eight-decimal transmission.
-func cholesky(a [][]float64) ([][]float64, error) {
-	l := make([][]float64, 7)
-	for i := range l {
-		l[i] = make([]float64, 7)
+// Jacobi eigenvalues for a symmetric 4x4 information matrix, no new dependency.
+func eigenvalues4(input [][]float64) []float64 {
+	var a [4][4]float64
+	for i := 0; i < 4; i++ {
+		copy(a[i][:], input[i])
 	}
-	for i := 0; i < 7; i++ {
-		for j := 0; j <= i; j++ {
-			x := a[i][j]
-			if i == j {
-				x += 1e-6
-			}
-			for k := 0; k < j; k++ {
-				x -= l[i][k] * l[j][k]
-			}
-			if i == j {
-				if x <= 0 {
-					return nil, fmt.Errorf("non-PSD covariance")
+	for step := 0; step < 80; step++ {
+		p, q, big := 0, 1, 0.
+		for i := 0; i < 4; i++ {
+			for j := i + 1; j < 4; j++ {
+				if math.Abs(a[i][j]) > big {
+					p, q, big = i, j, math.Abs(a[i][j])
 				}
-				l[i][j] = math.Sqrt(x)
-			} else {
-				l[i][j] = x / l[j][j]
 			}
 		}
+		if big < 1e-10 {
+			break
+		}
+		angle := .5 * math.Atan2(2*a[p][q], a[q][q]-a[p][p])
+		c, s := math.Cos(angle), math.Sin(angle)
+		app, aqq, apq := a[p][p], a[q][q], a[p][q]
+		for k := 0; k < 4; k++ {
+			if k == p || k == q {
+				continue
+			}
+			v, w := a[k][p], a[k][q]
+			a[k][p] = c*v - s*w
+			a[p][k] = a[k][p]
+			a[k][q] = s*v + c*w
+			a[q][k] = a[k][q]
+		}
+		a[p][p] = c*c*app - 2*c*s*apq + s*s*aqq
+		a[q][q] = s*s*app + 2*c*s*apq + c*c*aqq
+		a[p][q] = 0
+		a[q][p] = 0
 	}
-	return l, nil
+	result := []float64{a[0][0], a[1][1], a[2][2], a[3][3]}
+	sort.Float64s(result)
+	return result
 }

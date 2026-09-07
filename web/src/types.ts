@@ -2,9 +2,6 @@ export interface Cause {
   id: string;
   label: string;
   support: number | null;
-  score_mean: number | null;
-  score_low: number | null;
-  score_high: number | null;
   factor_estimates: number[];
 }
 export interface Parameter {
@@ -41,5 +38,4 @@ export interface Study {
   maximum_source_information_share: number;
   quality: Record<string, number>;
   warnings: string[];
-  legacy_archive: { contributors: number; requests: number; raw_usd: number };
 }

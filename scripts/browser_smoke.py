@@ -26,7 +26,7 @@ def submit(*args, **kwargs):
 
 
 def read():
-    with urllib.request.urlopen(BASE + "/api/v2/studies/gpt6-components", timeout=10) as response:
+    with urllib.request.urlopen(BASE + "/api/studies/gpt6-components", timeout=10) as response:
         return json.load(response)
 
 
@@ -54,7 +54,7 @@ def smoke():
             page.get_by_role("button", name="刷新统计 ↻").click()
             expect(page.get_by_role("heading", name="贡献已收到，等待互补信息。")).to_be_visible()
             # A single installation with two raw intervals may participate in
-            # inference. No legacy three-installation / 200-request gate.
+            # inference without a three-installation or 200-request gate.
             submit(revision=2, informative=True)
             result = read()
             assert result["totals"]["requests"] == 4 and result["totals"]["batches"] == 1

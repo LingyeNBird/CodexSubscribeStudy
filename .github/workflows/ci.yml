@@ -45,7 +45,7 @@ jobs:
       - name: Validate Go protocol, aggregation, store and API
         run: |
           go mod download
-          test -z "$(gofmt -l internal/study/*v2.go internal/study/pooled_test.go)"
+          test -z "$(gofmt -l internal/study/*.go cmd/study/*.go protocol/*.go)"
           go vet ./...
           go test -race -count=1 -v ./... | tee "$STUDY_REVIEW_OUTPUT/go-tests.log"
           go build -trimpath -o "$RUNNER_TEMP/study" ./cmd/study

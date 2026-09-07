@@ -14,7 +14,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 ROOT = Path(__file__).resolve().parents[1]
-DESCRIPTOR_BYTES = (ROOT / "protocol/method-v2.json").read_bytes().strip()
+DESCRIPTOR_BYTES = (ROOT / "protocol/method.json").read_bytes().strip()
 DESCRIPTOR = json.loads(DESCRIPTOR_BYTES)
 
 
@@ -85,6 +85,6 @@ def packet(seed=80, revision=1, batch="11111111-1111-4111-8111-111111111111", *,
     if extra:
         report["summary"].update(extra)
     body = json.dumps(report, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
-    path = "/api/v2/reports"
-    signed = b"CodexSubscribeStudy/2\nPOST\n" + path.encode() + b"\n" + body
+    path = "/api/reports"
+    signed = b"CodexSubscribeStudy\nPOST\n" + path.encode() + b"\n" + body
     return path, body, base64.b64encode(key.sign(signed)).decode()

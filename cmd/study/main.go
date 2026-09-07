@@ -40,29 +40,12 @@ func main() {
 		log.Print("backup completed")
 		return
 	}
-	if err = store.Prune(); err != nil {
-		log.Fatal("database retention maintenance failed")
-	}
 	handler := study.NewServer(store, web.Assets())
 	server := &http.Server{Addr: env("STUDY_ADDR", ":8080"), Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 8192, ErrorLog: log.New(io.Discard, "", 0)}
 	// TLS and network peers see IPs. The application deliberately has no access
 	// log; configure the deployment proxy/CDN consistently with the privacy notice.
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
-	go func() {
-		ticker := time.NewTicker(24 * time.Hour)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				if store.Prune() != nil {
-					log.Print("retention maintenance failed")
-				}
-			}
-		}
-	}()
 	go func() {
 		<-ctx.Done()
 		shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
