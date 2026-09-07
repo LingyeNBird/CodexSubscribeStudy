@@ -1,0 +1,27 @@
+.country-shortcuts {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+.country-shortcuts button {
+  border: 1px solid #9eafa1;
+  border-radius: 9px;
+  background: transparent;
+  padding: 8px 12px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  min-height: 39px;
+}
+.country-shortcuts button[aria-pressed="true"] {
+  background: var(--mint);
+  border-color: var(--ink);
+  font-weight: 700;
+}
+.country-select {
+  flex: 1 1 180px;
+  min-width: 0;
+}

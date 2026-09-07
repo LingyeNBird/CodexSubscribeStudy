@@ -1,0 +1,351 @@
+.survey-study-card {
+  margin-top: 24px;
+}
+.survey-study-card .project-mark {
+  background: var(--peach);
+  font-size: 3.3rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.hero {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 55px;
+  align-items: center;
+  padding: 68px 0 72px;
+}
+.hero h1 {
+  line-height: 1.38;
+  margin-bottom: 23px;
+}
+.highlight {
+  position: relative;
+  isolation: isolate;
+  white-space: nowrap;
+}
+.highlight:after {
+  content: "";
+  position: absolute;
+  inset: 57% -7px 1px -4px;
+  background: var(--mint);
+  border: 1.5px solid #96bda7;
+  border-radius: 9px;
+  transform: rotate(-2deg);
+  z-index: -1;
+}
+.hero-copy > p {
+  font-size: 1.02rem;
+  line-height: 1.9;
+  color: var(--muted);
+  margin-bottom: 27px;
+}
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 22px;
+}
+.hero-foot {
+  display: block;
+  margin-top: 24px;
+  font-size: 0.77rem;
+  color: var(--muted);
+}
+.hero-art {
+  position: relative;
+  min-height: 316px;
+  max-width: 420px;
+  width: 100%;
+  justify-self: end;
+  padding-top: 15px;
+}
+.art-note {
+  width: 248px;
+  margin-left: 126px;
+  transform: rotate(5deg);
+  padding: 23px 25px 28px;
+  border: var(--line);
+  border-radius: 20px;
+  background: var(--sun);
+  box-shadow: 5px 5px 0 var(--ink);
+  font-size: 1rem;
+}
+.art-note strong {
+  font-size: 1.4rem;
+}
+.art-note > span {
+  display: block;
+  font-size: 0.61rem;
+  letter-spacing: 0.13em;
+  margin-top: 15px;
+}
+.art-stack {
+  position: relative;
+  border: var(--line);
+  border-radius: 18px;
+  padding: 17px 20px;
+  box-shadow: 4px 4px 0 var(--ink);
+  display: flex;
+  gap: 18px;
+  align-items: center;
+  width: 345px;
+}
+.art-stack span {
+  font-family: ui-monospace, monospace;
+  border: 1.5px solid var(--ink);
+  border-radius: 9px;
+  padding: 2px 7px;
+  font-size: 0.75rem;
+}
+.art-stack strong {
+  font-size: 1rem;
+}
+.art-stack.mint {
+  transform: rotate(-5deg);
+  margin-top: -17px;
+  z-index: 3;
+}
+.art-stack.violet {
+  transform: rotate(1deg);
+  margin-top: 12px;
+  margin-left: 40px;
+  z-index: 2;
+}
+.art-stack.peach {
+  transform: rotate(-3deg);
+  margin-top: 11px;
+  margin-left: 8px;
+}
+.art-plus {
+  position: absolute;
+  top: 10px;
+  left: 40px;
+  font-size: 3.5rem;
+  font-weight: 300;
+  transform: rotate(12deg);
+}
+.section-head {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  margin-bottom: 23px;
+}
+.section-head .eyebrow {
+  margin-bottom: 7px;
+}
+.study-card {
+  display: flex;
+  gap: 30px;
+  align-items: center;
+  background: var(--paper);
+  border: var(--line);
+  border-radius: 24px;
+  box-shadow: 5px 5px 0 var(--ink);
+  padding: 31px;
+  position: relative;
+  transition: transform 0.15s;
+}
+.study-card:hover {
+  transform: translateY(-2px);
+}
+.project-mark {
+  position: relative;
+  flex: 0 0 138px;
+  height: 153px;
+  background: var(--violet);
+  border: var(--line);
+  border-radius: 21px;
+  font-weight: 800;
+  font-size: 5.5rem;
+  line-height: 1.65;
+  text-align: center;
+  transform: rotate(-3deg);
+}
+.project-mark span {
+  position: absolute;
+  right: -8px;
+  top: -13px;
+  width: 45px;
+  height: 45px;
+  border: var(--line);
+  border-radius: 14px;
+  background: var(--sun);
+  font-size: 1.5rem;
+  line-height: 1.6;
+}
+.project-copy {
+  flex: 1;
+  min-width: 0;
+}
+.tag-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.project-copy h3 {
+  font-size: 1.65rem;
+  margin-bottom: 9px;
+}
+.project-copy p {
+  font-size: 0.88rem;
+  color: var(--muted);
+  margin-bottom: 16px;
+}
+.project-numbers {
+  display: flex;
+  gap: 32px;
+  font-size: 0.73rem;
+  color: var(--muted);
+}
+.project-numbers b {
+  font-size: 1rem;
+  color: var(--ink);
+  margin-right: 9px;
+}
+.project-arrow {
+  width: 50px;
+  height: 50px;
+  border: var(--line);
+  border-radius: 16px;
+  background: var(--mint);
+  font-size: 1.7rem;
+  text-align: center;
+  align-self: center;
+}
+.principles {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 35px;
+  margin: 58px 0 65px;
+}
+.principles h3 {
+  font-size: 1rem;
+  margin: 16px 0 9px;
+}
+.principles p {
+  font-size: 0.85rem;
+  color: var(--muted);
+  line-height: 1.8;
+  max-width: 290px;
+}
+@media (max-width: 1000px) {
+  .hero {
+    gap: 30px;
+  }
+  .hero-art {
+    transform: scale(0.88);
+    transform-origin: right center;
+  }
+  .project-mark {
+    flex-basis: 110px;
+    height: 131px;
+    font-size: 4.7rem;
+  }
+}
+@media (max-width: 720px) {
+  .hero {
+    grid-template-columns: 1fr;
+    padding: 45px 0 35px;
+    gap: 15px;
+  }
+  .hero h1 {
+    font-size: 2.75rem;
+  }
+  .hero-art {
+    display: none;
+  }
+  .hero-copy > p {
+    font-size: 0.94rem;
+  }
+  .hero-actions {
+    gap: 17px;
+  }
+  .hero-foot {
+    margin-top: 20px;
+  }
+  .section-head h2 {
+    font-size: 1.35rem;
+  }
+  .study-card {
+    padding: 23px;
+    gap: 18px;
+    flex-wrap: wrap;
+    border-radius: 19px;
+  }
+  .project-mark {
+    flex-basis: 63px;
+    height: 71px;
+    font-size: 2.55rem;
+    border-radius: 14px;
+  }
+  .project-mark span {
+    width: 28px;
+    height: 28px;
+    font-size: 0.93rem;
+    right: -7px;
+    top: -10px;
+    border-radius: 9px;
+  }
+  .project-copy {
+    flex: 1 1 calc(100% - 85px);
+  }
+  .project-copy h3 {
+    font-size: 1.23rem;
+  }
+  .project-copy p {
+    font-size: 0.8rem;
+  }
+  .project-arrow {
+    display: none;
+  }
+  .project-numbers {
+    gap: 14px;
+    flex-wrap: wrap;
+  }
+  .tag-row {
+    gap: 6px;
+  }
+  .tag-row .subtle {
+    font-size: 0.65rem;
+  }
+  .desktop-break {
+    display: none;
+  }
+  .principles {
+    grid-template-columns: 1fr;
+    gap: 20px;
+    margin: 35px 0;
+  }
+  .principles article {
+    display: grid;
+    grid-template-columns: 40px 1fr;
+    gap: 0 16px;
+  }
+  .principles h3 {
+    margin: 0 0 6px;
+  }
+  .principles p {
+    grid-column: 2;
+    max-width: none;
+    font-size: 0.8rem;
+    margin: 0;
+  }
+}
+@media (max-width: 390px) {
+  .hero h1 {
+    font-size: 2.35rem;
+  }
+  .study-card {
+    padding: 20px 15px;
+    gap: 16px;
+  }
+  .project-copy {
+    flex-basis: 100%;
+  }
+  .project-mark {
+    display: none;
+  }
+}

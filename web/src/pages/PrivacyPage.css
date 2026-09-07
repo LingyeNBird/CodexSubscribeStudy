@@ -1,0 +1,14 @@
+.privacy-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 22px;
+  margin: 30px 0;
+}
+.privacy-grid .pill {
+  margin-bottom: 16px;
+}
+@media (max-width: 720px) {
+  .privacy-grid {
+    grid-template-columns: 1fr;
+  }
+}

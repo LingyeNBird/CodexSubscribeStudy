@@ -1,0 +1,349 @@
+.detail-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 30px;
+}
+.detail-heading h1 {
+  font-size: 2.35rem;
+  margin-bottom: 13px;
+}
+.detail-heading p {
+  font-size: 0.94rem;
+  color: var(--muted);
+  margin: 0;
+}
+.refresh-block {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: end;
+  flex-shrink: 0;
+}
+.refresh-block small {
+  color: var(--muted);
+}
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+.metrics article {
+  border: var(--line);
+  border-radius: 18px;
+  padding: 20px;
+  box-shadow: 3px 3px 0 var(--ink);
+  min-width: 0;
+}
+.metrics article > span {
+  font-size: 0.77rem;
+  font-weight: 700;
+}
+.metrics strong {
+  display: block;
+  font-size: 1.95rem;
+  margin: 10px 0 5px;
+  line-height: 1.4;
+  word-break: break-word;
+}
+.metrics strong small {
+  font-weight: 500;
+  margin-left: 6px;
+  font-size: 0.66rem;
+  white-space: nowrap;
+}
+.metrics p {
+  font-size: 0.7rem;
+  margin: 0;
+  color: #4b6253;
+}
+.metric-caption {
+  font-size: 0.72rem;
+  color: var(--muted);
+  margin: 17px 0 28px;
+}
+.analysis-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  gap: 23px;
+  margin: 27px 0;
+}
+.panel-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: space-between;
+}
+.panel-head .eyebrow {
+  margin-bottom: 7px;
+  font-size: 0.59rem;
+}
+.panel-intro {
+  font-size: 0.81rem;
+  line-height: 1.9;
+  color: var(--muted);
+}
+.causes {
+  margin-top: 26px;
+}
+.cause {
+  margin-bottom: 22px;
+}
+.cause-heading {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 9px;
+  font-size: 0.87rem;
+}
+.cause-heading > b {
+  margin-left: auto;
+  font-size: 1rem;
+  font-variant-numeric: tabular-nums;
+}
+.rank {
+  font-family: ui-monospace, monospace;
+  font-size: 0.7rem;
+  opacity: 0.6;
+}
+.bar-track {
+  height: 13px;
+  border: 1.5px solid var(--ink);
+  border-radius: 9px;
+  background: #f4f3ed;
+  overflow: hidden;
+}
+.bar-track > div {
+  height: 100%;
+  border-radius: 6px;
+  min-width: 0;
+  background: var(--mint);
+  transition: width 0.4s;
+}
+.bar-track > div.bar-1 {
+  background: #d6c9ef;
+}
+.bar-track > div.bar-2 {
+  background: #eabfa8;
+}
+.bar-track > div.bar-3 {
+  background: #e5d37e;
+}
+.bar-empty {
+  background: #eaece5;
+  border-color: #a8b4a9;
+}
+.cause > p {
+  font-size: 0.71rem;
+  color: var(--muted);
+  margin: 6px 0 0;
+}
+.fineprint {
+  font-size: 0.73rem;
+  line-height: 1.85;
+  color: var(--muted);
+  margin: 16px 0 0;
+}
+.side-panels {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+.quality-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 0.79rem;
+  margin: 12px 0;
+}
+.quality-row strong {
+  font-size: 0.74rem;
+  text-align: right;
+}
+.divider {
+  height: 1px;
+  background: #abb9ab;
+  margin: 20px 0;
+}
+.factor-panel label {
+  display: block;
+  margin: 0 0 7px;
+}
+.factor-panel select {
+  width: 100%;
+  padding: 9px 12px;
+  background: #f6f4ed;
+  border: 1.5px solid var(--ink);
+  border-radius: 10px;
+  font-size: 0.83rem;
+}
+.factor-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 17px;
+}
+.factor-grid > div {
+  background: #f3f2eb;
+  border-radius: 12px;
+  padding: 12px;
+}
+.factor-grid span {
+  display: block;
+  font-size: 0.71rem;
+  color: var(--muted);
+}
+.factor-grid strong {
+  display: block;
+  font-size: 1.2rem;
+  margin-top: 3px;
+}
+.empty-symbol {
+  font-size: 3rem;
+  line-height: 1;
+  border: var(--line);
+  border-radius: 22px;
+  background: var(--sun);
+  padding: 13px;
+  flex-shrink: 0;
+}
+.score-details summary {
+  font-size: 1rem;
+  cursor: pointer;
+  font-weight: 700;
+}
+.score-details > p {
+  font-size: 0.82rem;
+  margin: 16px 0;
+}
+.table-scroll {
+  overflow-x: auto;
+}
+table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+td,
+th {
+  padding: 12px;
+  text-align: left;
+  border-bottom: 1px solid #d3dcd0;
+}
+th {
+  font-size: 0.73rem;
+  color: var(--muted);
+}
+.method-strip {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  align-items: center;
+  padding: 32px 0 50px;
+}
+.method-strip strong {
+  font-size: 1.1rem;
+}
+.method-strip p {
+  font-size: 0.73rem;
+  color: var(--muted);
+  margin: 8px 0 0;
+}
+.loading-panel {
+  padding: 55px;
+  text-align: center;
+  border: var(--line);
+  border-radius: 20px;
+  background: var(--paper);
+  margin: 20px 0;
+}
+@media (max-width: 1000px) {
+  .metrics {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .analysis-grid {
+    grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+  }
+  .detail-heading h1 {
+    font-size: 2rem;
+  }
+}
+@media (max-width: 720px) {
+  .detail-heading {
+    flex-direction: column;
+    align-items: start;
+    gap: 20px;
+  }
+  .detail-heading h1 {
+    font-size: 1.8rem;
+  }
+  .refresh-block {
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .analysis-grid {
+    grid-template-columns: 1fr;
+  }
+  .metrics {
+    gap: 12px;
+  }
+  .metrics article {
+    padding: 15px;
+  }
+  .metrics strong {
+    font-size: 1.6rem;
+  }
+  .metrics p {
+    font-size: 0.64rem;
+  }
+  .metrics strong small {
+    font-size: 0.59rem;
+  }
+  .metric-caption {
+    font-size: 0.66rem;
+  }
+  .side-panels {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+  .empty-symbol {
+    font-size: 2rem;
+    padding: 8px;
+    border-radius: 16px;
+  }
+  .method-strip {
+    flex-direction: column;
+    align-items: start;
+  }
+  .panel-head {
+    align-items: start;
+  }
+}
+@media (max-width: 390px) {
+  .metrics strong {
+    font-size: 1.37rem;
+  }
+  .metrics strong small {
+    display: block;
+    margin: 0;
+  }
+  .metrics {
+    gap: 10px;
+  }
+  .empty-symbol {
+    display: none;
+  }
+  .cause-heading {
+    gap: 7px;
+    font-size: 0.82rem;
+  }
+  .cause-heading > b {
+    font-size: 0.89rem;
+  }
+  .rank {
+    font-size: 0.63rem;
+  }
+}

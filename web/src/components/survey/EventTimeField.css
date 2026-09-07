@@ -1,0 +1,17 @@
+.event-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.event-controls + .text-field {
+  max-width: 420px;
+}
+@media (max-width: 720px) {
+  .event-controls {
+    align-items: start;
+    flex-direction: column;
+  }
+}

@@ -1,0 +1,146 @@
+.survey-form fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0 0 27px;
+  min-width: 0;
+}
+.survey-form fieldset:last-child {
+  margin-bottom: 0;
+}
+.survey-form legend {
+  font-weight: 700;
+  font-size: 0.96rem;
+  padding: 0;
+  margin-bottom: 12px;
+  max-width: 100%;
+}
+.survey-form .hint {
+  font-size: 0.72rem;
+  font-weight: 400;
+  color: var(--muted);
+  display: inline-block;
+  margin-left: 12px;
+}
+.survey-form .choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.survey-form .choice {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #abb9ad;
+  border-radius: 10px;
+  padding: 9px 14px;
+  cursor: pointer;
+  font-size: 0.86rem;
+  background: #fafaf4;
+  min-height: 43px;
+}
+.survey-form .choice:has(input:checked) {
+  background: var(--mint);
+  border-color: var(--ink);
+}
+.survey-form .choice:hover {
+  border-color: var(--ink);
+}
+.survey-form input[type="radio"],
+.survey-form input[type="checkbox"] {
+  accent-color: #35654b;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  flex-shrink: 0;
+}
+.survey-form .text-field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  font-size: 0.8rem;
+  color: var(--muted);
+  max-width: 100%;
+  flex: 1;
+  min-width: 0;
+}
+.survey-form .choices + .text-field {
+  margin-top: 14px;
+}
+.survey-form input:not([type="checkbox"]):not([type="radio"]),
+.survey-form select {
+  background: #fffefb;
+  border: 1.5px solid #9eafa1;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 0.9rem;
+  min-height: 45px;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+.survey-form input:focus-visible,
+.survey-form select:focus-visible {
+  outline: 3px solid #79a68c;
+  outline-offset: 2px;
+}
+.survey-form input:disabled,
+.survey-form select:disabled {
+  opacity: 0.5;
+  background: #eaece5;
+}
+.survey-form .choice:has(input:disabled) {
+  opacity: 0.5;
+  cursor: default;
+}
+.survey-form .follow-up {
+  border-left: 3px solid #afd2ba;
+  padding-left: 19px;
+  margin-top: 19px;
+}
+.survey-form .unknown-button {
+  border: 1px solid #9eafa1;
+  border-radius: 9px;
+  background: transparent;
+  padding: 8px 12px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  min-height: 39px;
+}
+.survey-form .unknown-button[aria-pressed="true"] {
+  background: var(--mint);
+  border-color: var(--ink);
+  font-weight: 700;
+}
+.survey-form .field-row {
+  display: flex;
+  align-items: end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.survey-form .field-row .text-field {
+  flex: 1 1 180px;
+}
+.survey-form .field-note {
+  font-size: 0.74rem;
+  color: var(--muted);
+  line-height: 1.8;
+  margin: 10px 0 0;
+}
+.survey-form .sublegend {
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+@media (max-width: 720px) {
+  .survey-form .follow-up {
+    padding-left: 12px;
+  }
+  .survey-form .choice {
+    padding: 8px 11px;
+  }
+  .survey-form .field-row {
+    align-items: stretch;
+  }
+  .survey-form .unknown-button {
+    align-self: start;
+  }
+}
