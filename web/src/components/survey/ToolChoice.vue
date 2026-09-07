@@ -1,5 +1,7 @@
 <script setup lang="ts">
-defineProps<{ name: string; group: string; modes: string[]; other?: boolean }>();
+import type { Component } from "vue";
+
+defineProps<{ name: string; group: string; modes: string[]; other?: boolean; icon?: Component }>();
 const selected = defineModel<boolean>("selected", { required: true });
 const mode = defineModel<string>("mode", { required: true });
 const otherName = defineModel<string>("otherName");
@@ -7,7 +9,11 @@ const otherName = defineModel<string>("otherName");
 
 <template>
   <div class="tool-row" :class="{ selected }">
-    <label class="tool-choice"><input v-model="selected" type="checkbox" />{{ name }}</label>
+    <label class="tool-choice">
+      <input v-model="selected" type="checkbox" />
+      <component :is="icon" v-if="icon" class="tool-icon" />
+      <span>{{ name }}</span>
+    </label>
     <fieldset v-if="selected && modes.length" class="tool-modes">
       <legend>{{ name }} 连接方式</legend>
       <label v-for="option in modes" :key="option"

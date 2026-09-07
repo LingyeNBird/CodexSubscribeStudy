@@ -1,5 +1,13 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from "vue";
+import type { Component } from "vue";
+import ClaudeCodeIcon from "./components/icons/ClaudeCodeIcon.vue";
+import OhMyPiIcon from "./components/icons/OhMyPiIcon.vue";
+import OpenCodeIcon from "./components/icons/OpenCodeIcon.vue";
+import CursorIcon from "./components/icons/CursorIcon.vue";
+import ClineIcon from "./components/icons/ClineIcon.vue";
+import RooCodeIcon from "./components/icons/RooCodeIcon.vue";
+import AiderIcon from "./components/icons/AiderIcon.vue";
 
 import CountrySelect from "./components/survey/CountrySelect.vue";
 import EventTimeField from "./components/survey/EventTimeField.vue";
@@ -16,26 +24,26 @@ const activation = ref("");
 const usage = ref<string[]>([]);
 const proxy = ref("");
 const proxyOther = ref("");
-const exit = reactive({ network: "", quality: "", address: "", country: "", unknown: false });
+const exit = reactive({ network: "", quality: "", country: "", unknown: false });
 const official = reactive([
   { name: "Web 网页", selected: false, mode: "", connection: false },
   { name: "Codex Desktop", selected: false, mode: "", connection: true },
   { name: "Codex CI", selected: false, mode: "", connection: true },
 ]);
 const thirdParty = reactive(
-  [
-    "Claude Code",
-    "CI",
-    "Pi",
-    "oh-my-pi",
-    "OpenCode",
-    "Cursor",
-    "Cline",
-    "Roo Code",
-    "Aider",
-    "其他",
-  ].map((name) => ({ name, selected: false, mode: "" })),
+  ["Claude Code", "Pi", "oh-my-pi", "OpenCode", "Cursor", "Cline", "Roo Code", "Aider", "其他"].map(
+    (name) => ({ name, selected: false, mode: "" }),
+  ),
 );
+const toolIcons: Record<string, Component> = {
+  "Claude Code": ClaudeCodeIcon,
+  "oh-my-pi": OhMyPiIcon,
+  OpenCode: OpenCodeIcon,
+  Cursor: CursorIcon,
+  Cline: ClineIcon,
+  "Roo Code": RooCodeIcon,
+  Aider: AiderIcon,
+};
 const thirdPartyOther = ref("");
 const duration = ref<number | string>("");
 const durationUnit = ref("天");
@@ -202,17 +210,11 @@ const truncated = ref("");
               </div>
             </fieldset>
             <div class="field-row">
-              <label class="text-field"
-                >IP 地址<input
-                  v-model="exit.address"
-                  type="text"
-                  :disabled="exit.unknown"
-                  placeholder="IPv4 或 IPv6 地址"
-                  spellcheck="false" /></label
-              ><CountrySelect
+              <CountrySelect
                 v-model="exit.country"
                 label="IP 所在国家或地区"
                 :disabled="exit.unknown"
+                shortcuts
               /><button
                 class="unknown-button"
                 type="button"
@@ -223,7 +225,7 @@ const truncated = ref("");
               </button>
             </div>
             <p class="field-note">
-              “我不知道”仅针对 IP 地址与所在地区；选中后忽略这两项，取消后恢复填写。
+              “我不知道”仅针对 IP 所在国家或地区；选中后忽略该项，取消后恢复填写。不收集 IP 地址。
             </p>
           </fieldset>
         </template>
@@ -248,6 +250,7 @@ const truncated = ref("");
               v-for="tool in thirdParty"
               :key="tool.name"
               :name="tool.name"
+              :icon="toolIcons[tool.name]"
               group="third-party"
               :modes="tool.name === 'Claude Code' ? [] : ['直登（OAuth）', '反代']"
               :other="tool.name === '其他'"
