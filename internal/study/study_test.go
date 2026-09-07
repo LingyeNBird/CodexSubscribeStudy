@@ -83,7 +83,7 @@ func TestPythonContractAndMethodDigest(t *testing.T) {
 }
 func TestSignaturesScopeAndTampering(t *testing.T) {
 	_, body, sig := example(t)
-	for _, path := range []string{"/api/v1/withdraw", "/wrong"} {
+	for _, path := range []string{"/wrong"} {
 		if _, err := Decode(body, sig, path); err == nil {
 			t.Fatal("path signature accepted")
 		}
@@ -136,52 +136,32 @@ func TestSummaryValidation(t *testing.T) {
 		})
 	}
 }
-func TestLatestSnapshotReplacesAndWithdrawalCannotResurrect(t *testing.T) {
+func TestLatestSnapshotReplacesAndRejectsOldRevisions(t *testing.T) {
 	s := openTest(t, 20)
 	r, body, _ := example(t)
-	if duplicate, e := s.Put(r, body, false); e != nil || duplicate {
+	r, body, _ = sign(t, r, "/api/v1/reports", 1)
+	if duplicate, e := s.Put(r, body); e != nil || duplicate {
 		t.Fatal(e)
 	}
-	if duplicate, e := s.Put(r, body, false); e != nil || !duplicate {
+	if duplicate, e := s.Put(r, body); e != nil || !duplicate {
 		t.Fatal("idempotence", e)
 	}
-	if _, e := s.Put(r, append(body, ' '), false); !errors.Is(e, ErrConflict) {
+	if _, e := s.Put(r, append(body, ' ')); !errors.Is(e, ErrConflict) {
 		t.Fatal("same revision collision", e)
 	}
+	old, oldBody := r, body
 	r.Revision = 2
 	r.Summary.RawUSD += 100
-	_, body, _ = sign(t, r, "/api/v1/reports", 1)
 	r, body, _ = sign(t, r, "/api/v1/reports", 1)
-	if _, e := s.Put(r, body, false); e != nil {
+	if _, e := s.Put(r, body); e != nil {
 		t.Fatal(e)
 	}
-	// Same identity updates replace its snapshot rather than adding request counts.
-	r.Revision = 3
-	_, body, _ = sign(t, r, "/api/v1/reports", 1)
-	if _, e := s.Put(r, body, false); e != nil {
-		t.Fatal(e)
+	if _, e := s.Put(old, oldBody); !errors.Is(e, ErrStale) {
+		t.Fatal("old revision accepted", e)
 	}
 	rows, _, e := s.Snapshot()
-	if e != nil || len(rows) != 2 {
+	if e != nil || len(rows) != 1 {
 		t.Fatal("snapshot count", len(rows), e)
-	}
-	old := r
-	oldBody := body
-	r.Revision = 4
-	r.Summary = nil
-	_, body, _ = sign(t, r, "/api/v1/withdraw", 1)
-	if _, e = s.Put(r, body, true); e != nil {
-		t.Fatal(e)
-	}
-	if duplicate, e := s.Put(r, body, true); e != nil || !duplicate {
-		t.Fatal("withdraw idempotence", e)
-	}
-	if _, e = s.Put(old, oldBody, false); !errors.Is(e, ErrStale) {
-		t.Fatal("resurrected", e)
-	}
-	rows, _, _ = s.Snapshot()
-	if len(rows) != 1 {
-		t.Fatal("withdraw not removed")
 	}
 }
 func TestCapacityAndDurableRetentionAndPersistentRestart(t *testing.T) {
@@ -193,18 +173,13 @@ func TestCapacityAndDurableRetentionAndPersistentRestart(t *testing.T) {
 	r, _, _ := example(t)
 	for i := byte(1); i <= 2; i++ {
 		r, b, _ := sign(t, r, "/api/v1/reports", i)
-		if _, e := s.Put(r, b, false); e != nil {
+		if _, e := s.Put(r, b); e != nil {
 			t.Fatal(e)
 		}
 	}
 	other, b, _ := sign(t, r, "/api/v1/reports", 3)
-	if _, e := s.Put(other, b, false); !errors.Is(e, ErrCapacity) {
+	if _, e := s.Put(other, b); !errors.Is(e, ErrCapacity) {
 		t.Fatal(e)
-	}
-	other.Summary = nil
-	other.Revision = 2
-	if _, e := s.Put(other, b, true); !errors.Is(e, ErrCapacity) {
-		t.Fatal("tombstone capacity", e)
 	}
 	backup := filepath.Join(t.TempDir(), "backup.db")
 	if e := s.Backup(backup); e != nil {
@@ -229,7 +204,7 @@ func TestCapacityAndDurableRetentionAndPersistentRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	r, b, _ = sign(t, r, "/api/v1/reports", 1)
-	if duplicate, e := s.Put(r, b, false); e != nil || !duplicate {
+	if duplicate, e := s.Put(r, b); e != nil || !duplicate {
 		t.Fatal("durable duplicate must be idempotent", e)
 	}
 	data, _ := os.ReadFile(path)
@@ -287,6 +262,8 @@ func TestHTTPGuardsAndRateLimit(t *testing.T) {
 	}{
 		{"/api/v1/reports", "GET", nil, "", 405}, {"/api/v1/reports", "POST", body, "bad", 400},
 		{"/api/v1/reports", "POST", bytes.Repeat([]byte{'a'}, MaxBody+1), sig, 413},
+		{"/api/v1/withdraw", "POST", body, sig, 404},
+		{"/api/v2/withdraw", "POST", body, sig, 404},
 		{"/api/v1/nonesuch", "GET", nil, "", 404},
 	}
 	for _, tc := range tests {
@@ -359,7 +336,7 @@ func TestConcurrentSubmissionsDoNotAddDuplicateSnapshots(t *testing.T) {
 			copy := r
 			copy.Revision = uint64(revision)
 			body, _ := json.Marshal(copy)
-			_, e := store.Put(copy, body, false)
+			_, e := store.Put(copy, body)
 			if e != nil && !errors.Is(e, ErrStale) {
 				t.Error(e)
 			}

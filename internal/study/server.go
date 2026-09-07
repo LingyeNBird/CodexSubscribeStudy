@@ -119,7 +119,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			respond(w, 200, result)
 		}
 		return
-	case "/api/v1/reports", "/api/v1/withdraw":
+	case "/api/v1/reports":
 		if r.Method != "POST" {
 			fail(w, 405, "method")
 			return
@@ -145,7 +145,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			fail(w, 400, "invalid_submission")
 			return
 		}
-		duplicate, err := s.store.Put(report, body, r.URL.Path == "/api/v1/withdraw")
+		duplicate, err := s.store.Put(report, body)
 		if errors.Is(err, ErrStale) || errors.Is(err, ErrConflict) {
 			fail(w, 409, "revision_conflict")
 			return

@@ -103,6 +103,9 @@ func rejectDuplicates(dec *json.Decoder, depth int) error {
 
 func Decode(body []byte, signature, path string) (Report, error) {
 	var report Report
+	if path != "/api/v1/reports" {
+		return report, errors.New("path")
+	}
 	if len(body) > MaxBody || !utf8.Valid(body) {
 		return report, errors.New("body")
 	}
@@ -136,12 +139,6 @@ func Decode(body []byte, signature, path string) (Report, error) {
 	signed := append([]byte("CodexSubscribeStudy/1\nPOST\n"+path+"\n"), body...)
 	if !ed25519.Verify(ed25519.PublicKey(key), signed, sig) {
 		return report, errors.New("signature")
-	}
-	if path == "/api/v1/withdraw" {
-		if report.Summary != nil {
-			return report, errors.New("withdrawal body")
-		}
-		return report, nil
 	}
 	if report.Summary == nil {
 		return report, errors.New("summary required")

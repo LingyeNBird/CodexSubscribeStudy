@@ -75,7 +75,7 @@ def smoke():
             page.get_by_role("link", name="研究方法", exact=True).click()
             expect(page.get_by_role("heading", name="哪些数据进入研究？")).to_be_visible()
             page.get_by_role("link", name="隐私与参与", exact=True).click()
-            expect(page.get_by_role("heading", name="保留历史，不自动撤回")).to_be_visible()
+            expect(page.get_by_role("heading", name="贡献会长期保留")).to_be_visible()
             assert page.evaluate("document.documentElement.scrollWidth <= innerWidth + 1")
             page.screenshot(path=str(OUTPUT / "study-privacy-mobile.png"), full_page=True)
             submit(revision=3, batch="22222222-2222-4222-8222-222222222222")
@@ -92,14 +92,6 @@ def smoke():
             public = json.dumps(read())
             for forbidden in ("public_key", "batch_id", "log_evidence", "capacity_context", "auxiliary"):
                 assert forbidden not in public
-            submit(revision=4, withdraw=True)
-            assert read()["totals"]["requests"] == 0
-            try:
-                submit(revision=3, batch="22222222-2222-4222-8222-222222222222")
-            except urllib.error.HTTPError as e:
-                assert e.code == 409
-            else:
-                raise AssertionError("withdrawn packet revived")
             assert not errors, errors
             assert all(url.startswith(BASE) for url in requests), requests
             assert browser.contexts[0].cookies() == []
@@ -108,7 +100,7 @@ def smoke():
                 "checks": ["empty state", "one request accepted", "single installation inference", "Python Ed25519 to Go",
                            "2x2 raw profile evidence", "replace not accumulate", "retain separate batches", "seven hypotheses",
                            "four responsive widths", "parameter ranges", "method and privacy", "reject capacity estimates",
-                           "withdrawal and replay floor", "no external requests or cookies"]}, indent=2) + "\n")
+                           "durable retention", "no external requests or cookies"]}, indent=2) + "\n")
         except Exception:
             (OUTPUT / "failure.txt").write_text(traceback.format_exc())
             page.screenshot(path=str(OUTPUT / "failure.png"), full_page=True)

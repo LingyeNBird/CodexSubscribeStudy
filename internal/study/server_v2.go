@@ -48,7 +48,7 @@ func (s *Server) serveV2(w http.ResponseWriter, r *http.Request) {
 			respond(w, 200, result)
 		}
 		return
-	case "/api/v2/reports", "/api/v2/withdraw":
+	case "/api/v2/reports":
 		if r.Method != "POST" {
 			fail(w, 405, "method")
 			return
@@ -74,7 +74,7 @@ func (s *Server) serveV2(w http.ResponseWriter, r *http.Request) {
 			fail(w, 400, "invalid_submission")
 			return
 		}
-		duplicate, err := s.store.PutV2(report, body, r.URL.Path == "/api/v2/withdraw")
+		duplicate, err := s.store.PutV2(report, body)
 		if errors.Is(err, ErrStale) || errors.Is(err, ErrConflict) {
 			fail(w, 409, "revision_conflict")
 			return

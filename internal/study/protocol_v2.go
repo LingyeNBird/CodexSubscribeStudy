@@ -13,7 +13,6 @@ import (
 	"math"
 	"regexp"
 	"sort"
-	"strings"
 	"unicode/utf8"
 
 	"github.com/LingyeNBird/CodexSubscribeStudy/protocol"
@@ -149,7 +148,7 @@ func DecodeV2(body []byte, signature, path string) (ReportV2, error) {
 	if len(body) > MaxBodyV2 || !utf8.Valid(body) {
 		return r, errors.New("body")
 	}
-	if path != "/api/v2/reports" && path != "/api/v2/withdraw" {
+	if path != "/api/v2/reports" {
 		return r, errors.New("path")
 	}
 	scan := json.NewDecoder(bytes.NewReader(body))
@@ -160,10 +159,7 @@ func DecodeV2(body []byte, signature, path string) (ReportV2, error) {
 	if _, err := scan.Token(); err != io.EOF {
 		return r, errors.New("trailing")
 	}
-	keys := []string{"protocol", "study_id", "method", "method_digest", "public_key", "revision"}
-	if strings.HasSuffix(path, "reports") {
-		keys = append(keys, "batch_id", "summary")
-	}
+	keys := []string{"protocol", "study_id", "method", "method_digest", "public_key", "revision", "batch_id", "summary"}
 	if err := exactKeys(body, keys); err != nil {
 		return r, err
 	}
@@ -188,9 +184,6 @@ func DecodeV2(body []byte, signature, path string) (ReportV2, error) {
 	}
 	if !ed25519.Verify(key, append([]byte("CodexSubscribeStudy/2\nPOST\n"+path+"\n"), body...), sig) {
 		return r, errors.New("signature")
-	}
-	if strings.HasSuffix(path, "withdraw") {
-		return r, nil
 	}
 	if !uuidPattern.MatchString(r.BatchID) || r.Summary == nil {
 		return r, errors.New("batch")

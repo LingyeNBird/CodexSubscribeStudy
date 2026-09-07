@@ -8,13 +8,12 @@
 | GET /api/v2/studies | 项目列表 |
 | GET /api/v2/studies/gpt6-components | 公开联合统计 |
 | POST /api/v2/reports | 更新单个统计批次 |
-| POST /api/v2/withdraw | 明确撤回同签名身份的全部 v1/v2 贡献 |
 
 报告无最小请求数、周期数、区间数、来源数或局部秩要求。零请求的质量摘要和单请求贡献均可接收；格式、签名与数值完整性校验不是科研准入门槛。
 
 ## 请求与签名
 
-JSON 报告严格包含 `protocol`、`study_id`、`method`、`method_digest`、`public_key`、`revision`，提交额外包含 `batch_id`、`summary`。撤回不带后二项。`method_digest` 是规范文件 `protocol/method-v2.json` 去掉首尾空白的 SHA-256，与 Sub2Pool `pooled_descriptor.json` 一致。方法为 `pooled-profile/raw-only-2`。
+JSON 报告严格包含 `protocol`、`study_id`、`method`、`method_digest`、`public_key`、`revision`、`batch_id`、`summary`。`method_digest` 是规范文件 `protocol/method-v2.json` 去掉首尾空白的 SHA-256，与 Sub2Pool `pooled_descriptor.json` 一致。方法为 `pooled-profile/raw-only-2`。
 
 `X-Study-Signature` 为 Ed25519 标准 base64 签名。被签名字节为 `CodexSubscribeStudy/2\nPOST\n` + 路径 + `\n` + 原始 JSON 字节。重新排版必须重新签名。公钥为32字节标准base64，revision为正安全整数，batch_id为随机UUIDv4，不编码账号/时间。
 
@@ -32,12 +31,12 @@ log_evidence, gpt6_quota, information
 
 可读的 Python 签名与独立双区间计算示例见 `scripts/pooled_fixture.py`。它只产生合成测试数据，不是生产贡献者SDK或真实研究结果。
 
-## 更新、历史与撤回
+## 更新与长期保留
 
-同安装使用递增 revision，同 batch_id 较新报告原子替换，重复相同报告幂等；不同批次保留。迟到的其他批次旧版本不能越过已用版本或撤回下界。身份容量及10万个批次上限用于防止资源耗尽，不自动删除历史腾空间。
+同安装使用递增 revision，同 batch_id 较新报告原子替换，重复相同报告幂等；不同批次长期保留。迟到的其他批次旧版本不能越过已用版本。身份容量及10万个批次上限用于防止资源耗尽，不自动删除历史腾空间。
 
-v1路由和原报告保留。旧数据单独归档，不与v2重复加总；不将v1七个评分冒充完整新网格证据。旧客户端的明确签名撤回也适用于同身份的v2批次。停止科研、迁移、身份重置均不是远端撤回。原120天过期清理函数现为兼容no-op。
+v1路由和原报告保留。旧数据单独归档，不与v2重复加总；不将v1七个评分冒充完整新网格证据。停止参与、关闭科研、迁移、身份重置和长期未更新都不会删除已提交数据。原120天过期清理函数现为兼容no-op。
 
 返回200含 `accepted`、`revision`、`duplicate`；错误400表示字段/签名无效，409表示版本冲突，413体积超限，415非JSON，429限流，503存储或容量不可用。拒绝时不回显请求正文或凭据。
 
-公开GET不返回公钥、批次ID、单个来源曲线或时间线。应用不记录IP/访问日志，直接网络和反代仍可见出口IP；单请求贡献不保证k匿名。撤回为逻辑删除，不保证旧数据库页、备份或下载副本被物理擦除。
+公开GET不返回公钥、批次ID、单个来源曲线或时间线。应用不记录IP/访问日志，直接网络和反代仍可见出口IP；单请求贡献不保证k匿名。贡献会长期保留，参与者应在授权前理解这一保留规则。

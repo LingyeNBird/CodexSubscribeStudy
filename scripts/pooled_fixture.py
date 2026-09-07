@@ -75,17 +75,16 @@ def summary(informative=False):
     return result
 
 
-def packet(seed=80, revision=1, batch="11111111-1111-4111-8111-111111111111", *, informative=False, withdraw=False, extra=None):
+def packet(seed=80, revision=1, batch="11111111-1111-4111-8111-111111111111", *, informative=False, extra=None):
     key = Ed25519PrivateKey.from_private_bytes(bytes([seed]) * 32)
     report = {"protocol": DESCRIPTOR["protocol"], "study_id": DESCRIPTOR["study_id"],
               "method": DESCRIPTOR["method"], "method_digest": hashlib.sha256(DESCRIPTOR_BYTES).hexdigest(),
               "public_key": base64.b64encode(key.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)).decode(),
               "revision": revision}
-    if not withdraw:
-        report.update(batch_id=batch, summary=summary(informative))
-        if extra:
-            report["summary"].update(extra)
+    report.update(batch_id=batch, summary=summary(informative))
+    if extra:
+        report["summary"].update(extra)
     body = json.dumps(report, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
-    path = "/api/v2/withdraw" if withdraw else "/api/v2/reports"
+    path = "/api/v2/reports"
     signed = b"CodexSubscribeStudy/2\nPOST\n" + path.encode() + b"\n" + body
     return path, body, base64.b64encode(key.sign(signed)).decode()

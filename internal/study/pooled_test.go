@@ -66,7 +66,7 @@ func TestV2SignatureGridAndOneRequestAdmission(t *testing.T) {
 	if len(pointsV2) != 1311 || method.CandidateCount != 1311 || method.GridSHA256 != GridDigestV2() {
 		t.Fatal("grid mismatch")
 	}
-	if _, e := DecodeV2(body, sig, "/api/v2/withdraw"); e == nil {
+	if _, e := DecodeV2(body, sig, "/wrong"); e == nil {
 		t.Fatal("signature not bound to route")
 	}
 	changed := append([]byte{}, body...)
@@ -78,7 +78,7 @@ func TestV2SignatureGridAndOneRequestAdmission(t *testing.T) {
 func TestV2NoMinimumContributorsOrRank(t *testing.T) {
 	s := openTest(t, 10)
 	r, body, _ := exampleV2(t)
-	if _, e := s.PutV2(r, body, false); e != nil {
+	if _, e := s.PutV2(r, body); e != nil {
 		t.Fatal(e)
 	}
 	result, e := s.AggregateV2()
@@ -95,22 +95,26 @@ func TestV2NoMinimumContributorsOrRank(t *testing.T) {
 		}
 	}
 }
-func TestV2ReplaceAppendRetainAndWithdrawAll(t *testing.T) {
+func TestV2ReplaceAppendAndRetain(t *testing.T) {
 	s := openTest(t, 10)
 	r, _, _ := exampleV2(t)
 	r, b, _ := signV2(t, r, "/api/v2/reports", 11)
-	if _, e := s.PutV2(r, b, false); e != nil {
+	if _, e := s.PutV2(r, b); e != nil {
 		t.Fatal(e)
 	}
-	if duplicate, e := s.PutV2(r, b, false); e != nil || !duplicate {
+	if duplicate, e := s.PutV2(r, b); e != nil || !duplicate {
 		t.Fatal("duplicate", e)
 	}
+	old, oldBody := r, b
 	r.Revision = 2
 	r.Summary.Requests = 2
 	r.Summary.GPT6Requests = 2
 	r, b, _ = signV2(t, r, "/api/v2/reports", 11)
-	if _, e := s.PutV2(r, b, false); e != nil {
+	if _, e := s.PutV2(r, b); e != nil {
 		t.Fatal(e)
+	}
+	if _, e := s.PutV2(old, oldBody); !errors.Is(e, ErrConflict) {
+		t.Fatal("old revision accepted", e)
 	}
 	result, _ := s.AggregateV2()
 	if result.Totals.Requests != 2 || result.Totals.Batches != 1 {
@@ -119,7 +123,7 @@ func TestV2ReplaceAppendRetainAndWithdrawAll(t *testing.T) {
 	r.Revision = 3
 	r.BatchID = "22222222-2222-4222-8222-222222222222"
 	r, b, _ = signV2(t, r, "/api/v2/reports", 11)
-	if _, e := s.PutV2(r, b, false); e != nil {
+	if _, e := s.PutV2(r, b); e != nil {
 		t.Fatal(e)
 	}
 	s.now = func() time.Time { return time.Now().Add(800 * 24 * time.Hour) }
@@ -130,41 +134,16 @@ func TestV2ReplaceAppendRetainAndWithdrawAll(t *testing.T) {
 	if result.Totals.Requests != 4 || result.Totals.Batches != 2 {
 		t.Fatal("history discarded")
 	}
-	old, oldbody := r, b
-	r.Revision = 4
-	r.Summary = nil
-	r.BatchID = ""
-	r, b, _ = signV2(t, r, "/api/v2/withdraw", 11)
-	if _, e := s.PutV2(r, b, true); e != nil {
-		t.Fatal(e)
-	}
-	result, _ = s.AggregateV2()
-	if result.Totals.Requests != 0 {
-		t.Fatal("withdraw")
-	}
-	if _, e := s.PutV2(old, oldbody, false); !errors.Is(e, ErrStale) {
-		t.Fatal("withdrawn replay")
-	}
-	// Reconsent may add a new batch, but must not erase the old withdrawal floor.
-	fresh := old
-	fresh.Revision = 5
-	fresh.BatchID = "33333333-3333-4333-8333-333333333333"
-	fresh, body, _ := signV2(t, fresh, "/api/v2/reports", 11)
-	if _, e := s.PutV2(fresh, body, false); e != nil {
-		t.Fatal(e)
-	}
-	if _, e := s.PutV2(old, oldbody, false); !errors.Is(e, ErrStale) {
-		t.Fatal("old replay after reconsent")
-	}
 	if e := s.Backup(filepath.Join(t.TempDir(), "backup.db")); e != nil {
 		t.Fatal(e)
 	}
 }
-func TestV2KeepsLegacySeparateAndV1WithdrawalCoversBoth(t *testing.T) {
+
+func TestV2KeepsLegacySeparate(t *testing.T) {
 	s := openTest(t, 10)
 	legacy, _, _ := example(t)
 	legacy, b, _ := sign(t, legacy, "/api/v1/reports", 8)
-	if _, e := s.Put(legacy, b, false); e != nil {
+	if _, e := s.Put(legacy, b); e != nil {
 		t.Fatal(e)
 	}
 	r, _, _ := exampleV2(t)
@@ -173,21 +152,12 @@ func TestV2KeepsLegacySeparateAndV1WithdrawalCoversBoth(t *testing.T) {
 	if r.PublicKey != legacy.PublicKey {
 		t.Fatal("seed")
 	}
-	if _, e := s.PutV2(r, b, false); e != nil {
+	if _, e := s.PutV2(r, b); e != nil {
 		t.Fatal(e)
 	}
 	result, _ := s.AggregateV2()
 	if result.Legacy.Contributors != 1 || result.Totals.Requests != 1 {
 		t.Fatal("legacy was lost or double counted")
-	}
-	legacy.Revision = r.Revision + 1
-	legacy.Summary = nil
-	if _, e := s.Put(legacy, b, true); e != nil {
-		t.Fatal(e)
-	}
-	result, _ = s.AggregateV2()
-	if result.Totals.Batches != 0 || result.Legacy.Contributors != 0 {
-		t.Fatal("legacy explicit withdrawal")
 	}
 }
 func TestV2JointGridNotLocalPercentageAverage(t *testing.T) {
@@ -356,13 +326,13 @@ func TestV2ZeroRequestStatisticsAndConflictingRevision(t *testing.T) {
 	if _, e := DecodeV2(b, sig, "/api/v2/reports"); e != nil {
 		t.Fatal(e)
 	}
-	if _, e := store.PutV2(r, b, false); e != nil {
+	if _, e := store.PutV2(r, b); e != nil {
 		t.Fatal(e)
 	}
 	legacy, _, _ := example(t)
 	legacy.Revision = r.Revision
 	legacy, b, _ = sign(t, legacy, "/api/v1/reports", 8)
-	if _, e := store.Put(legacy, b, false); !errors.Is(e, ErrConflict) {
+	if _, e := store.Put(legacy, b); !errors.Is(e, ErrConflict) {
 		t.Fatal("cross-version revision reused", e)
 	}
 }

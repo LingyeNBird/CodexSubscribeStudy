@@ -17,15 +17,10 @@ var ErrStale = errors.New("stale revision")
 var ErrConflict = errors.New("revision conflicts")
 var ErrCapacity = errors.New("contribution capacity")
 var reportsBucket = []byte("reports-v1")
-var tombstonesBucket = []byte("withdrawn-v1")
 
 type Stored struct {
 	Report       Report `json:"report"`
 	Digest       string `json:"digest"`
-	ReceivedHour int64  `json:"received_hour"`
-}
-type Tombstone struct {
-	Revision     uint64 `json:"revision"`
 	ReceivedHour int64  `json:"received_hour"`
 }
 type Store struct {
@@ -46,7 +41,7 @@ func Open(path string, maxReporters int) (*Store, error) {
 		return nil, err
 	}
 	if err = db.Update(func(tx *bolt.Tx) error {
-		for _, key := range [][]byte{reportsBucket, tombstonesBucket, batchesBucket, identitiesBucket} {
+		for _, key := range [][]byte{reportsBucket, batchesBucket, identitiesBucket} {
 			if _, e := tx.CreateBucketIfNotExists(key); e != nil {
 				return e
 			}
@@ -64,10 +59,7 @@ func (s *Store) Backup(path string) error {
 }
 func reporterKey(public string) []byte { digest := sha256.Sum256([]byte(public)); return digest[:] }
 
-func (s *Store) Put(report Report, body []byte, withdraw bool) (bool, error) {
-	if withdraw {
-		return s.withdrawAll(report.PublicKey, report.Revision)
-	}
+func (s *Store) Put(report Report, body []byte) (bool, error) {
 	duplicate := false
 	hash := fmt.Sprintf("%x", sha256.Sum256(body))
 	key := reporterKey(report.PublicKey)
@@ -76,36 +68,23 @@ func (s *Store) Put(report Report, body []byte, withdraw bool) (bool, error) {
 		if err != nil {
 			return err
 		}
-		if report.Revision <= identity.Withdrawn {
-			return ErrStale
-		}
 		if report.Revision < identity.Highest {
 			return ErrStale
 		}
-		reports, tombs := tx.Bucket(reportsBucket), tx.Bucket(tombstonesBucket)
+		reports := tx.Bucket(reportsBucket)
 		var previous Stored
-		var tomb Tombstone
 		existing := reports.Get(key)
-		retired := tombs.Get(key)
 		if existing != nil {
 			if err := json.Unmarshal(existing, &previous); err != nil {
 				return err
 			}
 		}
-		if retired != nil {
-			if err := json.Unmarshal(retired, &tomb); err != nil {
-				return err
-			}
-		}
 		maximum := previous.Report.Revision
-		if tomb.Revision > maximum {
-			maximum = tomb.Revision
-		}
 		if report.Revision < maximum {
 			return ErrStale
 		}
 		if report.Revision == maximum {
-			if !withdraw && existing != nil && previous.Digest == hash {
+			if existing != nil && previous.Digest == hash {
 				duplicate = true
 				return nil
 			}
@@ -115,7 +94,7 @@ func (s *Store) Put(report Report, body []byte, withdraw bool) (bool, error) {
 			return ErrConflict
 		}
 		hour := s.now().UTC().Unix() / 3600
-		if existing == nil && retired == nil && reports.Stats().KeyN+tombs.Stats().KeyN >= s.maxReporters {
+		if existing == nil && reports.Stats().KeyN >= s.maxReporters {
 			return ErrCapacity
 		}
 		// One contribution snapshot per installation/origin. Increasing a revision
@@ -155,6 +134,6 @@ func (s *Store) Snapshot() ([]Summary, int64, error) {
 	return summaries, updated, err
 }
 
-// Kept for old administrative callers. Retention is now durable: inactivity
-// never deletes contributions. Only an explicitly signed withdrawal removes them.
+// Kept for old administrative callers. Retention is durable: inactivity never
+// deletes contributions.
 func (s *Store) Prune() error { return nil }

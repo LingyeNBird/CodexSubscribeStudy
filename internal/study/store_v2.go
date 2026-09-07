@@ -1,7 +1,6 @@
 package study
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -18,8 +17,7 @@ type StoredV2 struct {
 	ReceivedHour int64    `json:"received_hour"`
 }
 type IdentityState struct {
-	Highest   uint64 `json:"highest"`
-	Withdrawn uint64 `json:"withdrawn"`
+	Highest uint64 `json:"highest"`
 }
 
 func batchKey(public, id string) []byte {
@@ -41,18 +39,6 @@ func loadIdentity(tx *bolt.Tx, key []byte) (IdentityState, error) {
 			state.Highest = legacy.Report.Revision
 		}
 	}
-	var tomb Tombstone
-	if data := tx.Bucket(tombstonesBucket).Get(key); data != nil {
-		if err := json.Unmarshal(data, &tomb); err != nil {
-			return state, err
-		}
-		if tomb.Revision > state.Highest {
-			state.Highest = tomb.Revision
-		}
-		if tomb.Revision > state.Withdrawn {
-			state.Withdrawn = tomb.Revision
-		}
-	}
 	return state, nil
 }
 func saveIdentity(tx *bolt.Tx, key []byte, state IdentityState) error {
@@ -63,10 +49,7 @@ func saveIdentity(tx *bolt.Tx, key []byte, state IdentityState) error {
 	return tx.Bucket(identitiesBucket).Put(key, data)
 }
 
-func (s *Store) PutV2(report ReportV2, body []byte, withdraw bool) (bool, error) {
-	if withdraw {
-		return s.withdrawAll(report.PublicKey, report.Revision)
-	}
+func (s *Store) PutV2(report ReportV2, body []byte) (bool, error) {
 	duplicate := false
 	hash := fmt.Sprintf("%x", sha256.Sum256(body))
 	key := reporterKey(report.PublicKey)
@@ -75,9 +58,6 @@ func (s *Store) PutV2(report ReportV2, body []byte, withdraw bool) (bool, error)
 		state, err := loadIdentity(tx, key)
 		if err != nil {
 			return err
-		}
-		if report.Revision <= state.Withdrawn {
-			return ErrStale
 		}
 		batches := tx.Bucket(batchesBucket)
 		var old StoredV2
@@ -110,54 +90,7 @@ func (s *Store) PutV2(report ReportV2, body []byte, withdraw bool) (bool, error)
 			return err
 		}
 		state.Highest = report.Revision
-		// Keep the withdrawal floor even after re-consent: old batches must
-		// never reappear via a delayed formerly valid signature.
 		return saveIdentity(tx, key, state)
-	})
-	return duplicate, err
-}
-
-func (s *Store) withdrawAll(public string, revision uint64) (bool, error) {
-	duplicate := false
-	key := reporterKey(public)
-	err := s.db.Update(func(tx *bolt.Tx) error {
-		state, err := loadIdentity(tx, key)
-		if err != nil {
-			return err
-		}
-		if revision < state.Highest {
-			return ErrStale
-		}
-		if revision == state.Highest {
-			if revision == state.Withdrawn {
-				duplicate = true
-				return nil
-			}
-			return ErrConflict
-		}
-		if tx.Bucket(identitiesBucket).Get(key) == nil && tx.Bucket(identitiesBucket).Stats().KeyN >= s.maxReporters {
-			return ErrCapacity
-		}
-		prefix := append(append([]byte{}, key...), ':')
-		bucket := tx.Bucket(batchesBucket)
-		// Cursor delete preserves the next key; no per-request public endpoint.
-		c := bucket.Cursor()
-		for k, _ := c.Seek(prefix); k != nil && bytes.HasPrefix(k, prefix); k, _ = c.Next() {
-			if err := c.Delete(); err != nil {
-				return err
-			}
-		}
-		if err := tx.Bucket(reportsBucket).Delete(key); err != nil {
-			return err
-		}
-		tomb, err := json.Marshal(Tombstone{revision, s.now().UTC().Unix() / 3600})
-		if err != nil {
-			return err
-		}
-		if err := tx.Bucket(tombstonesBucket).Put(key, tomb); err != nil {
-			return err
-		}
-		return saveIdentity(tx, key, IdentityState{Highest: revision, Withdrawn: revision})
 	})
 	return duplicate, err
 }
