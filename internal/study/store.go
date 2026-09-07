@@ -46,7 +46,7 @@ func Open(path string, maxReporters int) (*Store, error) {
 		return nil, err
 	}
 	if err = db.Update(func(tx *bolt.Tx) error {
-		for _, key := range [][]byte{reportsBucket, tombstonesBucket} {
+		for _, key := range [][]byte{reportsBucket, tombstonesBucket, batchesBucket, identitiesBucket} {
 			if _, e := tx.CreateBucketIfNotExists(key); e != nil {
 				return e
 			}
@@ -65,10 +65,23 @@ func (s *Store) Backup(path string) error {
 func reporterKey(public string) []byte { digest := sha256.Sum256([]byte(public)); return digest[:] }
 
 func (s *Store) Put(report Report, body []byte, withdraw bool) (bool, error) {
+	if withdraw {
+		return s.withdrawAll(report.PublicKey, report.Revision)
+	}
 	duplicate := false
 	hash := fmt.Sprintf("%x", sha256.Sum256(body))
 	key := reporterKey(report.PublicKey)
 	err := s.db.Update(func(tx *bolt.Tx) error {
+		identity, err := loadIdentity(tx, key)
+		if err != nil {
+			return err
+		}
+		if report.Revision <= identity.Withdrawn {
+			return ErrStale
+		}
+		if report.Revision < identity.Highest {
+			return ErrStale
+		}
 		reports, tombs := tx.Bucket(reportsBucket), tx.Bucket(tombstonesBucket)
 		var previous Stored
 		var tomb Tombstone
@@ -92,26 +105,18 @@ func (s *Store) Put(report Report, body []byte, withdraw bool) (bool, error) {
 			return ErrStale
 		}
 		if report.Revision == maximum {
-			if withdraw && existing == nil && retired != nil {
-				duplicate = true
-				return nil
-			}
 			if !withdraw && existing != nil && previous.Digest == hash {
 				duplicate = true
 				return nil
 			}
 			return ErrConflict
 		}
+		if report.Revision == identity.Highest {
+			return ErrConflict
+		}
 		hour := s.now().UTC().Unix() / 3600
 		if existing == nil && retired == nil && reports.Stats().KeyN+tombs.Stats().KeyN >= s.maxReporters {
 			return ErrCapacity
-		}
-		if withdraw {
-			data, _ := json.Marshal(Tombstone{report.Revision, hour})
-			if err := tombs.Put(key, data); err != nil {
-				return err
-			}
-			return reports.Delete(key)
 		}
 		// One contribution snapshot per installation/origin. Increasing a revision
 		// REPLACES overlapping history instead of adding it to the sample count.
@@ -122,7 +127,8 @@ func (s *Store) Put(report Report, body []byte, withdraw bool) (bool, error) {
 		if err = reports.Put(key, data); err != nil {
 			return err
 		}
-		return tombs.Delete(key)
+		identity.Highest = report.Revision
+		return saveIdentity(tx, key, identity)
 	})
 	return duplicate, err
 }
@@ -130,14 +136,13 @@ func (s *Store) Put(report Report, body []byte, withdraw bool) (bool, error) {
 func (s *Store) Snapshot() ([]Summary, int64, error) {
 	var summaries []Summary
 	var updated int64
-	cutoff := (s.now().UTC().Unix() / 3600) - 120*24
 	err := s.db.View(func(tx *bolt.Tx) error {
 		return tx.Bucket(reportsBucket).ForEach(func(_, value []byte) error {
 			var item Stored
 			if err := json.Unmarshal(value, &item); err != nil {
 				return err
 			}
-			if item.ReceivedHour < cutoff || item.Report.MethodDigest != protocol.Digest() {
+			if item.Report.MethodDigest != protocol.Digest() {
 				return nil
 			}
 			summaries = append(summaries, *item.Report.Summary)
@@ -150,34 +155,6 @@ func (s *Store) Snapshot() ([]Summary, int64, error) {
 	return summaries, updated, err
 }
 
-// Remove inactive statistics, retaining only an opaque key/revision tombstone
-// so an old signed packet cannot silently restore a withdrawn/expired report.
-func (s *Store) Prune() error {
-	cutoff := s.now().UTC().Unix()/3600 - 120*24
-	return s.db.Update(func(tx *bolt.Tx) error {
-		reports, tombs := tx.Bucket(reportsBucket), tx.Bucket(tombstonesBucket)
-		var expired [][]byte
-		if err := reports.ForEach(func(key, value []byte) error {
-			var item Stored
-			if err := json.Unmarshal(value, &item); err != nil {
-				return err
-			}
-			if item.ReceivedHour < cutoff {
-				expired = append(expired, append([]byte(nil), key...))
-				data, _ := json.Marshal(Tombstone{item.Report.Revision, item.ReceivedHour})
-				if err := tombs.Put(key, data); err != nil {
-					return err
-				}
-			}
-			return nil
-		}); err != nil {
-			return err
-		}
-		for _, key := range expired {
-			if err := reports.Delete(key); err != nil {
-				return err
-			}
-		}
-		return nil
-	})
-}
+// Kept for old administrative callers. Retention is now durable: inactivity
+// never deletes contributions. Only an explicitly signed withdrawal removes them.
+func (s *Store) Prune() error { return nil }

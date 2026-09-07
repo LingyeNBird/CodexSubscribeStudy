@@ -16,14 +16,16 @@ import (
 )
 
 type Server struct {
-	store     *Store
-	assets    fs.FS
-	mu        sync.Mutex
-	cached    Result
-	cachedAt  time.Time
-	tokens    float64
-	lastToken time.Time
-	sem       chan struct{}
+	store      *Store
+	assets     fs.FS
+	mu         sync.Mutex
+	cached     Result
+	cachedAt   time.Time
+	cachedV2   ResultV2
+	cachedV2At time.Time
+	tokens     float64
+	lastToken  time.Time
+	sem        chan struct{}
 }
 
 func NewServer(store *Store, assets fs.FS) *Server {
@@ -78,6 +80,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		defer func() { <-s.sem }()
 	default:
 		fail(w, 503, "busy")
+		return
+	}
+	if strings.HasPrefix(r.URL.Path, "/api/v2/") {
+		s.serveV2(w, r)
 		return
 	}
 	switch r.URL.Path {
@@ -155,6 +161,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if !duplicate {
 			s.mu.Lock()
 			s.cachedAt = time.Time{}
+			s.cachedV2At = time.Time{}
 			s.mu.Unlock()
 		}
 		respond(w, 200, map[string]any{"accepted": true, "revision": report.Revision, "duplicate": duplicate})

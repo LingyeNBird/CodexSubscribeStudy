@@ -184,7 +184,7 @@ func TestLatestSnapshotReplacesAndWithdrawalCannotResurrect(t *testing.T) {
 		t.Fatal("withdraw not removed")
 	}
 }
-func TestCapacityAndExpiryAndPersistentRestart(t *testing.T) {
+func TestCapacityAndDurableRetentionAndPersistentRestart(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "study.db")
 	s, err := Open(path, 2)
 	if err != nil {
@@ -222,15 +222,15 @@ func TestCapacityAndExpiryAndPersistentRestart(t *testing.T) {
 	}
 	s.now = func() time.Time { return time.Now().Add(121 * 24 * time.Hour) }
 	rows, _, _ = s.Snapshot()
-	if len(rows) != 0 {
-		t.Fatal("expired displayed")
+	if len(rows) != 2 {
+		t.Fatal("inactivity must not erase legacy archive")
 	}
 	if err = s.Prune(); err != nil {
 		t.Fatal(err)
 	}
 	r, b, _ = sign(t, r, "/api/v1/reports", 1)
-	if _, e := s.Put(r, b, false); !errors.Is(e, ErrConflict) {
-		t.Fatal("expired replay", e)
+	if duplicate, e := s.Put(r, b, false); e != nil || !duplicate {
+		t.Fatal("durable duplicate must be idempotent", e)
 	}
 	data, _ := os.ReadFile(path)
 	if bytes.Contains(data, []byte("sensitive-ip-not-to-be-stored")) {

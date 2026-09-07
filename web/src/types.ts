@@ -1,12 +1,45 @@
 export interface Cause {
-  id: string; label: string; support: number | null;
-  score_mean: number | null; score_low: number | null; score_high: number | null;
+  id: string;
+  label: string;
+  support: number | null;
+  score_mean: number | null;
+  score_low: number | null;
+  score_high: number | null;
   factor_estimates: number[];
 }
+export interface Parameter {
+  name: string;
+  mean: number;
+  low: number;
+  high: number;
+}
 export interface Study {
-  id: string; title: string; state: string; method: string; method_digest: string;
-  updated_at: string; window_days: number; minimum_contributors: number; confidence_meaning: string;
-  totals: { contributors: number; eligible_contributors: number; requests: number; gpt6_requests: number;
-    baseline_requests: number; raw_usd: number; gpt6_raw_usd: number; quota_points: number; cycles: number; blocks: number; };
-  causes: Cause[]; quality: Record<string, number>; identifiable_sites: number[];
+  id: string;
+  title: string;
+  state: "no_data" | "uninformative" | "conditional" | "sensitive";
+  method: string;
+  method_digest: string;
+  updated_at: string;
+  confidence_meaning: string;
+  totals: {
+    contributors: number;
+    batches: number;
+    requests: number;
+    gpt6_requests: number;
+    other_requests: number;
+    raw_usd: number;
+    gpt6_raw_usd: number;
+    quota_points: number;
+    intervals: number;
+    contrasts: number;
+  };
+  causes: Cause[];
+  parameters: Parameter[];
+  drift_support: number[][];
+  gpt6_quota: Parameter | null;
+  information_rank: number;
+  maximum_source_information_share: number;
+  quality: Record<string, number>;
+  warnings: string[];
+  legacy_archive: { contributors: number; requests: number; raw_usd: number };
 }
