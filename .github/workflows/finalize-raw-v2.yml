@@ -1,0 +1,79 @@
+name: Finalize raw-only v2 source
+on:
+  push:
+    branches: [feat/pooled-research-v2]
+    paths: [.github/workflows/finalize-raw-v2.yml]
+permissions:
+  contents: write
+jobs:
+  finalize:
+    if: github.repository == 'LingyeNBird/CodexSubscribeStudy'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Recover, validate and apply prior reviewed source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python - <<'PY'
+          import base64, hashlib, json, lzma, gzip, zlib, subprocess, pathlib, tempfile
+          repo='LingyeNBird/CodexSubscribeStudy'
+          blobs=['301eca5706df65882c1a3f48d78d4e11e428b1fe','75d4c968b777d3a6a9bc40b1f8645ba8b19a3795','c6fc7b17e581bde484574449d8de6c967b1ed0e9','41ad57c8d53f162d3855c557e57113d3826b6cf0','62ea1ed6231deb4856feb98c231b4be319ca7c69','47dfca97d7c1e0471e423760b0326b6b1733b52a','b6036630c83e4f1b08d7549bf891208f874e27e7','288195124e8f8deff3b1e1a7a39cb120b1b26cb6','eeddf25ad2f3b9d03e3d8a13235240ae6d40ee3d','2b8a5c4109417f1ce941ab40943dfdbfdfacca96','83436556755622da5713e0df0d9b4b04799e1ff4','407bfbd60d2eadc55f70f624721618c28ebd5814','e607112a53b546f6ee56c89b6741efa06d4ac968','0c6ba87031d6fcced07c5ac659f8b6ccbdcfe347']
+          parts=[]
+          for sha in blobs:
+              response=json.loads(subprocess.check_output(['gh','api',f'repos/{repo}/git/blobs/{sha}']))
+              raw=base64.b64decode(response['content'])
+              assert hashlib.sha1(b'blob '+str(len(raw)).encode()+b'\0'+raw).hexdigest()==sha
+              parts.append(raw)
+          matches=[]
+          for start in range(len(parts)):
+              packed=b''.join(parts[start:])
+              for decode in (lzma.decompress,gzip.decompress,zlib.decompress):
+                  try:
+                      payload=json.loads(decode(packed))
+                      if isinstance(payload,dict) and isinstance(payload.get('patch'),str) and isinstance(payload.get('hashes'),dict):
+                          matches.append((start,payload,hashlib.sha256(packed).hexdigest()))
+                  except (ValueError,EOFError,lzma.LZMAError,zlib.error,UnicodeError):
+                      pass
+          assert len(matches)==1, f'Expected exactly one complete verified patch, got {len(matches)}; no source modified'
+          start,payload,digest=matches[0]
+          print('Recovered source packet',start,digest,'files',len(payload['hashes']))
+          allowed={'cmd','internal','protocol','docs','scripts','web','research','.github'}
+          for name in payload['hashes']:
+              path=pathlib.PurePosixPath(name)
+              assert not path.is_absolute() and '..' not in path.parts
+              assert len(path.parts)==1 or path.parts[0] in allowed
+              assert not any(p in ('.git','.env','node_modules','.venv') for p in path.parts)
+          root=pathlib.Path(tempfile.mkdtemp(prefix='v2-source-'))
+          subprocess.run(['git','worktree','add','--detach',str(root),'9f157f4d58479dfa4a2c591f4d4fd9ba36bc9026'],check=True)
+          patch=root.parent/'raw-v2.patch'
+          patch.write_text(payload['patch'])
+          subprocess.run(['git','apply','--check',str(patch)],cwd=root,check=True)
+          subprocess.run(['git','apply','--index',str(patch)],cwd=root,check=True)
+          changes=subprocess.check_output(['git','diff','--cached','--name-only'],cwd=root).decode().splitlines()
+          assert set(changes)==set(payload['hashes'])
+          for name,expected in payload['hashes'].items():
+              source=root/name
+              if expected is None:
+                  assert not source.exists()
+                  pathlib.Path(name).unlink(missing_ok=True)
+              else:
+                  actual=subprocess.check_output(['git','hash-object',name],cwd=root).decode().strip()
+                  assert actual==expected,(name,actual,expected)
+                  target=pathlib.Path(name);target.parent.mkdir(parents=True,exist_ok=True)
+                  target.write_bytes(source.read_bytes());target.chmod(source.stat().st_mode & 0o777)
+          for name in ('.github/workflows/recover-v2-review.yml','.github/workflows/finalize-raw-v2.yml'):
+              pathlib.Path(name).unlink(missing_ok=True)
+          subprocess.run(['git','add','--all'],check=True)
+          subprocess.run(['git','diff','--cached','--check'],check=True)
+          print(subprocess.check_output(['git','diff','--cached','--stat']).decode())
+          PY
+      - name: Commit verified real source files on review branch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'feat: pool raw-only GPT-6 evidence without local eligibility gates'
+          git push origin HEAD:refs/heads/feat/pooled-research-v2
