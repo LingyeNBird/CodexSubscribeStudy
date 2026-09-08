@@ -18,6 +18,14 @@ const degraded = computed(() => status.value === "降智" || status.value === "�
 const banned = computed(() => status.value === "封号" || status.value === "降智并封号");
 const discovery = ref<string[]>([]);
 const discoveryOther = ref("");
+const degradationModels = [
+  "GPT-6 Astra",
+  "GPT-5.6 Sora",
+  "GPT-5.6 Terra",
+  "GPT-5.6 Luna",
+  "GPT-5.5",
+];
+const selectedDegradationModels = ref<string[]>([]);
 const region = ref("");
 const plan = ref("");
 const activation = ref("");
@@ -103,6 +111,22 @@ const truncated = ref("");
             <label v-for="item in ['降智', '封号', '降智并封号', '正常']" :key="item" class="choice"
               ><input v-model="status" type="radio" name="status" :value="item" />{{ item }}</label
             >
+          </div>
+        </fieldset>
+        <fieldset v-if="degraded" class="follow-up">
+          <legend>降智的模型<span class="hint">可多选</span></legend>
+          <div class="choices">
+            <label v-for="model in degradationModels" :key="model" class="choice">
+              <input v-model="selectedDegradationModels" type="checkbox" :value="model" />
+              {{ model }}
+            </label>
+            <button
+              type="button"
+              class="unknown-button"
+              @click="selectedDegradationModels = [...degradationModels]"
+            >
+              全部
+            </button>
           </div>
         </fieldset>
         <fieldset v-if="degraded" class="follow-up">
