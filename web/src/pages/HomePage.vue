@@ -48,10 +48,10 @@ defineProps<{ study: Study | null; loading: boolean }>();
   <a class="study-card survey-study-card" href="#/studies/chatgpt-account-survey"
     ><div class="project-mark peach" aria-hidden="true">02<span>↗</span></div>
     <div class="project-copy">
-      <div class="tag-row"><span class="pill plain">调查问卷 · 前端预览</span></div>
+      <div class="tag-row"><span class="pill plain">调查问卷</span></div>
       <h3>ChatGPT 套餐降智封号统计</h3>
       <p>从账号状态、套餐与连接方式，记录你的使用经历。</p>
-      <div class="project-numbers"><span>动态问题</span><span>暂未开放提交</span></div>
+      <div class="project-numbers"><span>自愿填写</span><span>查看统计结果</span></div>
     </div>
     <span class="project-arrow" aria-hidden="true">↗</span></a
   >

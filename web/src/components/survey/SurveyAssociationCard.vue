@@ -7,14 +7,15 @@ const props = defineProps<{
   scope: string;
   degraded: BinaryAssociation;
   banned: BinaryAssociation;
-  showExample: boolean;
+  limited: BinaryAssociation;
 }>();
 const outcomes = computed(() => [
   { label: "降智", value: props.degraded },
   { label: "封号", value: props.banned },
+  { label: "风控（限流）", value: props.limited },
 ]);
 const level = (phi: number | null) => {
-  if (!props.showExample || phi === null) return "unknown";
+  if (phi === null) return "unknown";
   const magnitude = Math.abs(phi);
   return magnitude >= 0.5
     ? "strong"
@@ -38,13 +39,12 @@ const strongest = computed(() => {
   return level(values.length ? Math.max(...values) : null);
 });
 const coefficient = (phi: number | null) =>
-  !props.showExample ? "—" : phi === null ? "无法计算" : `${phi > 0 ? "+" : ""}${phi.toFixed(3)}`;
+  phi === null ? "无法计算" : `${phi > 0 ? "+" : ""}${phi.toFixed(3)}`;
 const rate = (value: BinaryAssociation["selected"]) =>
   value.total
     ? `${value.events}/${value.total}（${((100 * value.events) / value.total).toFixed(1)}%）`
     : "无可比较样本";
 const explanation = (value: BinaryAssociation, outcome: string) => {
-  if (!props.showExample) return "接入有效问卷后展示对比结果。";
   if (value.phi === null) return "缺少可比较样本，或变量没有变化，无法判断关联。";
   const difference =
     100 *
@@ -75,12 +75,12 @@ const explanation = (value: BinaryAssociation, outcome: string) => {
       </div>
       <div class="direction-label">
         {{ labels[level(outcome.value.phi)]
-        }}<template v-if="showExample && outcome.value.phi !== null && outcome.value.phi !== 0">
+        }}<template v-if="outcome.value.phi !== null && outcome.value.phi !== 0">
           · {{ outcome.value.phi > 0 ? "正相关" : "负相关" }}</template
         >
       </div>
       <p>{{ explanation(outcome.value, outcome.label) }}</p>
-      <dl v-if="showExample">
+      <dl>
         <div>
           <dt>选择该项</dt>
           <dd>{{ rate(outcome.value.selected) }}</dd>

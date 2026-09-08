@@ -52,7 +52,7 @@ func Open(path string, maxReporters int) (*Store, error) {
 				return createErr
 			}
 		}
-		return nil
+		return initSurvey(tx)
 	}); err != nil {
 		_ = db.Close()
 		return nil, err

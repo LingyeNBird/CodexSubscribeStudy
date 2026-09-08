@@ -1,18 +1,18 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import SurveyAssociationCard from "./SurveyAssociationCard.vue";
-import {
-  surveyExampleAssociations,
-  surveyExampleOutcomeAssociation,
-} from "../../data/surveyExampleStatistics";
+import type { AssociationGroup } from "../../data/surveyApi";
 import type { BinaryAssociation } from "../../data/surveyAssociation";
-const props = defineProps<{ showExample: boolean }>();
+const props = defineProps<{
+  associations: AssociationGroup[];
+  outcomeAssociation: BinaryAssociation;
+}>();
 const onlyAssociated = ref(false);
 const factor = ref("all");
 const groups = computed(() =>
   factor.value === "all"
-    ? surveyExampleAssociations
-    : surveyExampleAssociations.filter((group) => group.id === factor.value),
+    ? props.associations
+    : props.associations.filter((group) => group.id === factor.value),
 );
 const cards = computed(() => {
   const entries = groups.value.flatMap((group) =>
@@ -21,10 +21,13 @@ const cards = computed(() => {
       id: `${group.id}:${row.label}`,
       title: group.title,
       scope: group.scope,
-      strength: Math.max(Math.abs(row.degraded.phi ?? 0), Math.abs(row.banned.phi ?? 0)),
+      strength: Math.max(
+        Math.abs(row.degraded.phi ?? 0),
+        Math.abs(row.banned.phi ?? 0),
+        Math.abs(row.limited.phi ?? 0),
+      ),
     })),
   );
-  if (!props.showExample) return entries;
   return entries
     .filter((entry) => !onlyAssociated.value || entry.strength >= 0.1)
     .sort((a, b) => b.strength - a.strength);
@@ -40,9 +43,9 @@ const rate = (group: BinaryAssociation["selected"]) =>
 <template>
   <section class="correlations" aria-labelledby="correlation-heading">
     <header class="correlation-heading">
-      <h2 id="correlation-heading">降智封号相关性</h2>
+      <h2 id="correlation-heading">异常相关性</h2>
       <p>
-        对比选择某个因素选项与未选择该项的问卷，同时观察降智和封号。这里的相关性不等于因果，也不表示时间先后。
+        对比选择某个因素选项与未选择该项的问卷，观察降智、封号和风控（限流）。相关性不等于因果，也不表示时间先后。
       </p>
     </header>
     <section class="outcome-association" aria-label="降智与封号的关联">
@@ -51,18 +54,13 @@ const rate = (group: BinaryAssociation["selected"]) =>
         <p>将“报告降智”与“报告封号”作为两个二元变量。</p>
       </div>
       <div class="outcome-phi">
-        <span>相关系数 φ</span
-        ><strong>{{ showExample ? coefficient(surveyExampleOutcomeAssociation.phi) : "—" }}</strong>
+        <span>相关系数 φ</span><strong>{{ coefficient(outcomeAssociation.phi) }}</strong>
       </div>
       <div class="outcome-rates">
         <span
-          >报告降智者中的封号比例<strong>{{
-            showExample ? rate(surveyExampleOutcomeAssociation.selected) : "—"
-          }}</strong></span
+          >报告降智者中的封号比例<strong>{{ rate(outcomeAssociation.selected) }}</strong></span
         ><span
-          >未报告降智者中的封号比例<strong>{{
-            showExample ? rate(surveyExampleOutcomeAssociation.unselected) : "—"
-          }}</strong></span
+          >未报告降智者中的封号比例<strong>{{ rate(outcomeAssociation.unselected) }}</strong></span
         >
       </div>
     </section>
@@ -70,11 +68,11 @@ const rate = (group: BinaryAssociation["selected"]) =>
       <label for="correlation-factor"
         >比较因素<select id="correlation-factor" v-model="factor">
           <option value="all">全部因素</option>
-          <option v-for="group in surveyExampleAssociations" :key="group.id" :value="group.id">
+          <option v-for="group in associations" :key="group.id" :value="group.id">
             {{ group.title }}
           </option>
         </select></label
-      ><span>{{ showExample ? "示例关联 · 未经混杂因素调整" : "— 表示暂无可用统计" }}</span>
+      ><span>样本关联 · 未经混杂因素调整</span>
     </div>
     <div class="correlation-legend" aria-label="关联强度颜色说明">
       <span class="legend-strong">强关联 ≥ 0.50</span>
@@ -84,14 +82,11 @@ const rate = (group: BinaryAssociation["selected"]) =>
       <span class="legend-unknown">暂无有效比较</span>
     </div>
     <div class="card-filter">
-      <label
-        ><input v-model="onlyAssociated" type="checkbox" :disabled="!showExample" />仅显示 |φ| ≥
-        0.10 的选项</label
-      >
-      <span v-if="showExample">显示 {{ cards.length }} 项 · 按两项关联的最大绝对值排序</span>
+      <label><input v-model="onlyAssociated" type="checkbox" />仅显示 |φ| ≥ 0.10 的选项</label>
+      <span>显示 {{ cards.length }} 项 · 按关联强度排序</span>
     </div>
     <p class="color-explanation">
-      颜色表示关联强弱，不表示危险或安全；负相关也按强度着色。卡片底色取降智、封号中较强的一项，具体方向和对比依据见卡片。
+      颜色表示关联强弱，不表示危险或安全；负相关也按强度着色。卡片底色取关联最强的一项。
     </p>
     <div class="association-grid">
       <SurveyAssociationCard
@@ -102,7 +97,7 @@ const rate = (group: BinaryAssociation["selected"]) =>
         :scope="card.scope"
         :degraded="card.degraded"
         :banned="card.banned"
-        :show-example="showExample"
+        :limited="card.limited"
       />
     </div>
     <p v-if="!cards.length" class="correlation-empty">
@@ -121,7 +116,7 @@ const rate = (group: BinaryAssociation["selected"]) =>
         “降智的模型”“降智发现方式”“事件时间记录”依赖异常状态才有回答，缺少正常对照，不纳入关联卡片。它们仍可在样本分布中查看。
       </p>
       <p>
-        未控制套餐、使用强度等混杂因素，没有给出总体风险或显著性结论。当前全部数字来自同一组虚构问卷，只用于界面示例。
+        未控制套餐、使用强度等混杂因素，没有给出总体风险或显著性结论。统计单位为问卷，不等于独立用户。
         颜色分档仅为经验性展示规则；接近零不代表已证明无关联或安全，少量样本也可能产生较大系数。卡片中的对比解释不是导致异常的原因。
       </p>
     </details>

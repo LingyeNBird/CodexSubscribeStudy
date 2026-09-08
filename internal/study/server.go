@@ -85,6 +85,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	switch r.URL.Path {
+	case "/api/survey/submissions", "/api/survey/statistics":
+		s.serveSurvey(w, r)
+		return
 	case "/healthz":
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			fail(w, http.StatusMethodNotAllowed, "method")

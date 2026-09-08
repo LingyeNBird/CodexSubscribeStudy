@@ -1,33 +1,57 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import SurveyFactorCard from "../components/survey/SurveyFactorCard.vue";
 import SurveyCorrelationPanel from "../components/survey/SurveyCorrelationPanel.vue";
-import {
-  surveyExampleOverview as example,
-  surveyExampleFactors,
-} from "../data/surveyExampleStatistics";
+import { surveyRequest, type SurveyStatistics } from "../data/surveyApi";
 
-const showExample = ref(false);
+const statistics = ref<SurveyStatistics | null>(null);
+const loading = ref(false);
+const error = ref("");
 const analysisView = ref<"distribution" | "correlation">("distribution");
-const affected = example.statuses[1]!.count + example.statuses[3]!.count;
-const banned = example.statuses[2]!.count + example.statuses[3]!.count;
+async function loadStatistics() {
+  if (loading.value) return;
+  loading.value = true;
+  error.value = "";
+  try {
+    statistics.value = await surveyRequest<SurveyStatistics>("statistics");
+  } catch (cause) {
+    statistics.value = null;
+    error.value = cause instanceof Error ? cause.message : "统计加载失败，请重试。";
+  } finally {
+    loading.value = false;
+  }
+}
+onMounted(loadStatistics);
 const metrics = computed(() => [
   {
     label: "问卷样本",
-    value: example.total,
+    value: statistics.value?.total,
     note: "统计单位为问卷，不等于独立用户",
     tone: "plain",
   },
-  { label: "报告降智", value: affected, note: "包含「降智并封号」", tone: "violet" },
-  { label: "报告封号", value: banned, note: "包含「降智并封号」", tone: "peach" },
   {
-    label: "报告正常",
-    value: example.statuses[0]!.count,
-    note: "填写时自述账号正常",
-    tone: "mint",
+    label: "报告降智",
+    value: statistics.value?.degraded,
+    note: "可与封号、风控同时出现",
+    tone: "violet",
   },
+  {
+    label: "报告封号",
+    value: statistics.value?.banned,
+    note: "可与降智、风控同时出现",
+    tone: "peach",
+  },
+  {
+    label: "风控（限流）",
+    value: statistics.value?.limited,
+    note: "可与降智、封号同时出现",
+    tone: "sun",
+  },
+  { label: "报告正常", value: statistics.value?.normal, note: "填写时自述账号正常", tone: "mint" },
 ]);
-const percentage = (count: number, total: number) => ((count / total) * 100).toFixed(1);
+const statuses = computed(() => statistics.value?.statuses ?? []);
+const percentage = (count: number) =>
+  statistics.value?.total ? ((100 * count) / statistics.value.total).toFixed(1) : "0.0";
 </script>
 
 <template>
@@ -46,78 +70,71 @@ const percentage = (count: number, total: number) => ((count / total) * 100).toF
       <a href="#/studies/chatgpt-account-survey/results" aria-current="page">统计结果</a>
     </nav>
 
-    <div class="results-mode" :class="{ example: showExample }" role="status">
+    <div class="results-mode" role="status">
       <div>
         <strong>{{
-          showExample ? "示例数据 · 不是真实调查结果" : "统计功能预览 · 尚未接入真实数据"
+          loading
+            ? "正在加载统计…"
+            : error
+              ? "统计暂时不可用"
+              : statistics?.total
+                ? "问卷统计结果"
+                : "尚未收到问卷"
         }}</strong>
-        <p>
-          {{
-            showExample
-              ? "以下为 200 份虚构问卷的展示示例，仅用于预览布局，不参与研究，也不包含你刚填写的内容。"
-              : "目前没有连接问卷提交与统计服务。你可以不填问卷直接浏览，或打开示例查看图表效果。"
-          }}
-        </p>
+        <p>{{ error || "展示已提交问卷的汇总结果。你可以不填问卷直接浏览。" }}</p>
       </div>
-      <button
-        class="button small"
-        type="button"
-        :aria-pressed="showExample"
-        @click="showExample = !showExample"
-      >
-        {{ showExample ? "返回未接入状态" : "查看示例效果" }}
+      <button class="button small" type="button" :disabled="loading" @click="loadStatistics">
+        {{ error ? "重试" : "刷新统计" }}
       </button>
     </div>
 
     <section class="result-metrics" aria-label="问卷统计概览">
       <article v-for="metric in metrics" :key="metric.label" :class="metric.tone">
         <span>{{ metric.label }}</span>
-        <strong>{{ showExample ? metric.value : "—" }}<small>份</small></strong>
+        <strong>{{ metric.value ?? "—" }}<small>份</small></strong>
         <p>{{ metric.note }}</p>
       </article>
     </section>
-    <p class="results-caption">
-      {{
-        showExample
-          ? "示例口径：报告降智与报告封号有重叠，不能相加作为异常总数。"
-          : "“—”表示尚无可用统计，不代表样本数为零。"
-      }}
-    </p>
+    <p class="results-caption">各异常状态可能重叠，不能直接相加作为异常总数。“—”表示无可用统计。</p>
 
     <section class="result-panel status-panel">
       <div class="result-panel-heading">
         <div>
           <h2>账号情况分布</h2>
-          <p>四种状态互斥，每份问卷归入一种。</p>
+          <p>按状态组合统计，每份问卷归入一种组合。</p>
         </div>
-        <span class="pill plain">{{ showExample ? "200 份示例问卷" : "等待真实统计" }}</span>
+        <span class="pill plain">{{ statistics ? `${statistics.total} 份问卷` : "等待统计" }}</span>
       </div>
-      <template v-if="showExample">
+      <template v-if="statistics && statistics.total > 0">
         <div class="status-strip" aria-hidden="true">
           <span
-            v-for="item in example.statuses"
+            v-for="item in statuses"
             :key="item.label"
             :class="item.tone"
             :style="{ flexGrow: item.count }"
           ></span>
         </div>
         <ul class="status-legend">
-          <li v-for="item in example.statuses" :key="item.label">
+          <li v-for="item in statuses" :key="item.label">
             <span class="status-dot" :class="item.tone"></span>
             <div>
               <span>{{ item.label }}</span
               ><strong
-                >{{ item.count }}
-                <small>份 · {{ percentage(item.count, example.total) }}%</small></strong
+                >{{ item.count }} <small>份 · {{ percentage(item.count) }}%</small></strong
               >
             </div>
           </li>
         </ul>
       </template>
       <div v-else class="results-empty">
-        <strong>统计将在数据接入后呈现</strong>
-        <p>这里会展示正常、降智、封号，以及降智并封号的样本分布。</p>
-        <button class="text-link" type="button" @click="showExample = true">先看示例图表 →</button>
+        <strong>{{ statistics ? "还没有问卷样本" : "暂无可用统计" }}</strong>
+        <p>
+          {{
+            statistics
+              ? "提交问卷后，这里会展示账号状态的分布。"
+              : "请等待加载完成，或使用上方按钮重试。"
+          }}
+        </p>
       </div>
     </section>
 
@@ -134,7 +151,7 @@ const percentage = (count: number, total: number) => ((count / total) * 100).toF
         :aria-pressed="analysisView === 'correlation'"
         @click="analysisView = 'correlation'"
       >
-        降智封号相关性
+        异常相关性
       </button>
     </div>
     <section
@@ -145,21 +162,24 @@ const percentage = (count: number, total: number) => ((count / total) * 100).toF
       <div class="factors-heading">
         <h2 id="factors-heading">使用情况与异常样本分布</h2>
         <p>
-          每张卡片可独立切换降智 /
-          封号。百分比表示该状态的有效回答中各选项所占比例，不能据此认定原因。
+          每张卡片可切换异常状态。百分比表示该状态的有效回答中各选项所占比例，不能据此认定原因。
         </p>
       </div>
       <div class="result-distributions">
         <SurveyFactorCard
-          v-for="distribution in surveyExampleFactors"
+          v-for="distribution in statistics?.factors ?? []"
           :key="distribution.id"
           :distribution="distribution"
-          :show-example="showExample"
         />
       </div>
     </section>
 
-    <SurveyCorrelationPanel v-show="analysisView === 'correlation'" :show-example="showExample" />
+    <SurveyCorrelationPanel
+      v-if="statistics"
+      v-show="analysisView === 'correlation'"
+      :associations="statistics.associations"
+      :outcome-association="statistics.outcomeAssociation"
+    />
 
     <section class="results-reading">
       <h2>这些数字应当怎样理解？</h2>

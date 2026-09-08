@@ -37,4 +37,40 @@ log_evidence, gpt6_quota, information
 
 停止参与、关闭科研、身份重置和长期未更新都不会删除已提交数据。返回200含 `accepted`、`revision`、`duplicate`；错误400表示字段或签名无效，409表示revision冲突，413体积超限，415非JSON，429限流，503存储或容量不可用。拒绝时不回显请求正文或凭据。
 
-公开GET不返回公钥、批次ID、单个来源曲线或时间线。应用不记录IP或访问日志，直接网络和反代仍可见出口IP；单请求贡献不保证k匿名。贡献会长期保留，参与者应在授权前理解这一保留规则。
+公开GET不返回公钥、批次ID、单个来源曲线或时间线。应用不保存原始IP或访问日志，直接网络和反代仍可见出口IP；单请求贡献不保证k匿名。贡献会长期保留，参与者应在授权前理解这一保留规则。
+
+## 账号情况问卷
+
+- `POST /api/survey/submissions`：JSON，请求上限 32 KiB；成功返回 HTTP 201 `{ "accepted": true }`。每次成功提交追加一份问卷，不去重或覆盖。
+- `GET /api/survey/statistics`：公开汇总，不返回逐份问卷或补充文本。响应禁用缓存，提交后的新请求立即可见。
+
+提交结构：
+
+```json
+{
+  "status": ["正常"],
+  "answers": { "plans": ["Plus"], "usage": ["直登"] },
+  "details": { "country": "JP", "duration": "24", "durationUnit": "小时" }
+}
+```
+
+`status` 为非空字符串数组：正常必须单独选择；降智、封号、风控（限流）可以任意组合，不得重复。`answers.plans` 必填。其他问题允许未作答，未作答不进入对应问题分母。所有提交值经后端白名单及条件关系验证。
+
+`answers` 接受目录 `internal/study/survey_catalog.json` 中的 models、plans、tools、activation、usage、proxy、network、quality、official、desktopMode、ciMode、shared、warning、truncated、discovery；值为选项字符串数组，单选必须仅一项，多选不得重复。
+
+`details` 仅接受：
+
+- country、exitCountry：ISO alpha-2 地区码；出口可为 `unknown`。
+- duration、durationUnit：非负有限数值字符串和天/小时/星期/月/年，换算约定小时÷24、星期×7、月×30、年×365。
+- people：整数且至少2，只在分发为“是”时有效；concurrency：非负整数或 `unknown`。数值上限为1000000。
+- degradationTime、banTime：对应异常发生时的 `YYYY-MM-DD`、`YYYY-MM-DDTHH:mm` 或 `unknown`。不附加时区推断。
+- discoveryOther、proxyOther、thirdPartyOther：仅对应“其他”选项有效的补充文本。
+- `toolMode:<工具名>`：已选第三方工具的直登（OAuth）或反代；Claude Code 不接受此项。
+
+补充值每项不超过2000字节。持续时间、人数、并发、地区、连接模式、事件记录精度的统计分组由服务端计算，不接受客户端直接上传分组结论。降智与封号时间分别进入各自分布。
+
+统计返回 total、degraded、banned、limited、normal、both、statuses、22项 factors、19项 associations、outcomeAssociation。各异常计数包含重叠问卷；both 为同时报告降智与封号的份数；statuses 按八种互斥状态组合返回 label、count、tone。factors 和 associations 分别提供 degraded、banned、limited 三类异常的分布和关联。事件时间仅统计问卷实际询问的降智与封号时间。
+
+分布分母只含该异常状态且回答该题的问卷；关联对照在该题全部有效回答中计算，包括正常样本。仅异常状态展开的模型、发现方式、事件时间不参与因素相关性。φ 分母为0时返回 null；未进行显著性检验、多重比较校正或混杂调整。
+
+问卷使用同一 bbolt 数据库及备份流程，最多保存100000份。

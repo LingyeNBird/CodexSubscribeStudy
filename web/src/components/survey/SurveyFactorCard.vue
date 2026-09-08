@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import type { FactorDistribution, SurveyOutcome } from "../../data/surveyExampleStatistics";
-const props = defineProps<{ distribution: FactorDistribution; showExample: boolean }>();
+import type { FactorDistribution, SurveyOutcome } from "../../data/surveyApi";
+const props = defineProps<{ distribution: FactorDistribution }>();
 const outcome = ref<SurveyOutcome>("degraded");
 const group = computed(() => props.distribution.groups[outcome.value]);
 const percentage = (count: number) =>
@@ -21,22 +21,25 @@ const percentage = (count: number) =>
       <button type="button" :aria-pressed="outcome === 'banned'" @click="outcome = 'banned'">
         封号
       </button>
+      <button
+        v-if="distribution.id !== 'eventTime'"
+        type="button"
+        :aria-pressed="outcome === 'limited'"
+        @click="outcome = 'limited'"
+      >
+        风控（限流）
+      </button>
     </div>
     <ul class="distribution-list">
       <li v-for="row in group.rows" :key="row.label">
         <div class="distribution-label">
           <span>{{ row.label }}</span
           ><strong>{{
-            showExample && group.total > 0
-              ? `${row.count} 份 · ${percentage(row.count).toFixed(1)}%`
-              : "—"
+            group.total > 0 ? `${row.count} 份 · ${percentage(row.count).toFixed(1)}%` : "—"
           }}</strong>
         </div>
         <div class="distribution-track" aria-hidden="true">
-          <span
-            :class="outcome"
-            :style="{ width: showExample ? `${percentage(row.count)}%` : '0%' }"
-          ></span>
+          <span :class="outcome" :style="{ width: `${percentage(row.count)}%` }"></span>
         </div>
       </li>
     </ul>

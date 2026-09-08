@@ -23,7 +23,7 @@
 }
 .outcome-switch {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 4px;
   border: 1px solid #b7c4b6;
   border-radius: 10px;
@@ -44,8 +44,14 @@
   border-color: #849379;
   font-weight: 700;
 }
-.outcome-switch button:last-child[aria-pressed="true"] {
+.outcome-switch button:nth-child(2)[aria-pressed="true"] {
   background: var(--peach);
+}
+.outcome-switch:not(:has(button:nth-child(3))) {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.outcome-switch button:nth-child(3)[aria-pressed="true"] {
+  background: var(--sun);
 }
 .distribution-list {
   margin: 22px 0 0;
@@ -88,6 +94,9 @@
 }
 .distribution-track .banned {
   background: var(--peach);
+}
+.distribution-track .limited {
+  background: var(--sun);
 }
 @media (max-width: 720px) {
   .factor-card {

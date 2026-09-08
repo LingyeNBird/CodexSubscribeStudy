@@ -48,9 +48,6 @@
   background: #edf1e7;
   margin-bottom: 25px;
 }
-.results-mode.example {
-  background: var(--sun);
-}
 .results-mode strong {
   font-size: 0.95rem;
 }
@@ -65,7 +62,7 @@
 }
 .result-metrics {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 17px;
 }
 .result-metrics article {

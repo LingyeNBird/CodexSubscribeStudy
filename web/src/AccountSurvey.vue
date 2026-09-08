@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from "vue";
+import { computed, onActivated, reactive, ref } from "vue";
+import { surveyRequest, type SurveySubmission } from "./data/surveyApi";
 import type { Component } from "vue";
 import ClaudeCodeIcon from "./components/icons/ClaudeCodeIcon.vue";
 import OhMyPiIcon from "./components/icons/OhMyPiIcon.vue";
@@ -13,9 +14,17 @@ import CountrySelect from "./components/survey/CountrySelect.vue";
 import EventTimeField from "./components/survey/EventTimeField.vue";
 import ToolChoice from "./components/survey/ToolChoice.vue";
 import "./styles/survey-controls.css";
-const status = ref("");
-const degraded = computed(() => status.value === "降智" || status.value === "降智并封号");
-const banned = computed(() => status.value === "封号" || status.value === "降智并封号");
+const accountState = ref("");
+const selectedIssues = ref<string[]>([]);
+const status = computed(() =>
+  accountState.value === "正常"
+    ? ["正常"]
+    : accountState.value === "存在异常"
+      ? [...selectedIssues.value]
+      : [],
+);
+const degraded = computed(() => status.value.includes("降智"));
+const banned = computed(() => status.value.includes("封号"));
 const discovery = ref<string[]>([]);
 const discoveryOther = ref("");
 const degradationModels = [
@@ -82,6 +91,98 @@ const concurrency = ref<number | string>("");
 const concurrencyUnknown = ref(false);
 const warning = ref("");
 const truncated = ref("");
+const submittedBefore = ref(false);
+const submitting = ref(false);
+const submitError = ref("");
+const submittedStorageKey = "chatgpt-account-survey:submitted";
+onActivated(() => {
+  try {
+    submittedBefore.value = window.localStorage.getItem(submittedStorageKey) === "1";
+  } catch {
+    // Storage restrictions must not prevent filling or submitting the questionnaire.
+  }
+});
+async function submitSurvey() {
+  if (submitting.value) return;
+  submitError.value = "";
+  if (!status.value.length || !plan.value) {
+    submitError.value = "请选择目前的账号情况和账号套餐级别。";
+    return;
+  }
+  const payload: SurveySubmission = { status: status.value, answers: {}, details: {} };
+  const answer = (key: string, value: string | string[]) => {
+    const values = Array.isArray(value) ? value : value ? [value] : [];
+    if (values.length) payload.answers[key] = values;
+  };
+  const detail = (key: string, value: string | number) => {
+    const text = String(value).trim();
+    if (text) payload.details[key] = text;
+  };
+  answer("plans", plan.value);
+  detail("country", region.value);
+  if (plan.value !== "Free 免费") answer("activation", activation.value);
+  if (degraded.value) {
+    answer("models", selectedDegradationModels.value);
+    answer("discovery", discovery.value);
+    if (discovery.value.includes("其他")) detail("discoveryOther", discoveryOther.value);
+  }
+  answer("usage", usage.value);
+  if (usage.value.includes("反代")) {
+    answer("proxy", proxy.value);
+    if (proxy.value === "其他") detail("proxyOther", proxyOther.value);
+    answer("network", exit.network);
+    answer("quality", exit.quality);
+    detail("exitCountry", exit.unknown ? "unknown" : exit.country);
+  }
+  answer(
+    "official",
+    official.filter((tool) => tool.selected).map((tool) => tool.name),
+  );
+  for (const tool of official) {
+    if (tool.selected && tool.connection)
+      answer(tool.name === "Codex Desktop" ? "desktopMode" : "ciMode", tool.mode);
+  }
+  answer(
+    "tools",
+    thirdParty.filter((tool) => tool.selected).map((tool) => tool.name),
+  );
+  for (const tool of thirdParty) {
+    if (!tool.selected) continue;
+    if (tool.name !== "Claude Code") detail(`toolMode:${tool.name}`, tool.mode);
+    if (tool.name === "其他") detail("thirdPartyOther", thirdPartyOther.value);
+  }
+  if (duration.value !== "") {
+    detail("duration", duration.value);
+    detail("durationUnit", durationUnit.value);
+  }
+  for (const event of events.value) {
+    detail(
+      event.id === "degradation" ? "degradationTime" : "banTime",
+      event.unknown ? "unknown" : event.precision === "day" ? event.date : event.minute,
+    );
+  }
+  answer("shared", shared.value);
+  if (shared.value === "是") detail("people", people.value);
+  detail("concurrency", concurrencyUnknown.value ? "unknown" : concurrency.value);
+  answer("warning", warning.value);
+  answer("truncated", truncated.value);
+  submitting.value = true;
+  try {
+    const result = await surveyRequest<{ accepted: boolean }>("submissions", payload);
+    if (!result.accepted) throw new Error("提交未完成，请稍后重试。");
+    submittedBefore.value = true;
+    try {
+      window.localStorage.setItem(submittedStorageKey, "1");
+    } catch {
+      // The submission succeeded even when browser storage is unavailable.
+    }
+    window.location.hash = "/studies/chatgpt-account-survey/results";
+  } catch (error) {
+    submitError.value = error instanceof Error ? error.message : "提交失败，请稍后重试。";
+  } finally {
+    submitting.value = false;
+  }
+}
 </script>
 
 <template>
@@ -92,15 +193,16 @@ const truncated = ref("");
       <h1>ChatGPT 套餐<br />降智封号统计</h1>
       <p>记录账号情况、使用方式与发生时间，帮助比较不同使用情形。</p>
       <div class="survey-notice" role="note">
-        当前仅供前端体验，不会上传或持久保存答案；查看统计再返回时保留填写内容，刷新或离开本研究后清空。“降智”为填写者的观察判断，不代表已确认的模型能力变化。
+        “降智”为填写者的观察判断，不代表已确认的模型能力变化。账号情况和套餐级别为必填，其余问题可按实际情况填写。
       </div>
+      <div v-if="submittedBefore" class="survey-notice" role="status">你貌似已提交过</div>
       <div class="survey-results-link">
         <span>想先看看大家的情况？</span>
         <a class="button" href="#/studies/chatgpt-account-survey/results">不填问卷，直接看统计 →</a>
       </div>
     </header>
 
-    <form class="survey-form" @submit.prevent>
+    <form class="survey-form" @submit.prevent="submitSurvey" :aria-busy="submitting">
       <section class="survey-section">
         <div class="survey-section-title">
           <span class="mini-icon mint">01</span>
@@ -112,9 +214,24 @@ const truncated = ref("");
         <fieldset>
           <legend>目前的账号情况</legend>
           <div class="choices">
-            <label v-for="item in ['降智', '封号', '降智并封号', '正常']" :key="item" class="choice"
-              ><input v-model="status" type="radio" name="status" :value="item" />{{ item }}</label
+            <label v-for="item in ['正常', '存在异常']" :key="item" class="choice"
+              ><input v-model="accountState" type="radio" name="account-state" :value="item" />{{
+                item
+              }}</label
             >
+          </div>
+        </fieldset>
+        <fieldset v-if="accountState === '存在异常'" class="follow-up">
+          <legend>出现了哪些情况？<span class="hint">可多选</span></legend>
+          <div class="choices">
+            <label v-for="item in ['降智', '封号', '风控（限流）']" :key="item" class="choice">
+              <input
+                v-model="selectedIssues"
+                type="checkbox"
+                name="account-issues"
+                :value="item"
+              />{{ item }}
+            </label>
           </div>
         </fieldset>
         <fieldset v-if="degraded" class="follow-up">
@@ -253,7 +370,7 @@ const truncated = ref("");
               </button>
             </div>
             <p class="field-note">
-              “我不知道”仅针对 IP 所在国家或地区；选中后忽略该项，取消后恢复填写。不收集 IP 地址。
+              “我不知道”仅针对 IP 所在国家或地区；选中后忽略该项，取消后恢复填写。
             </p>
           </fieldset>
         </template>
@@ -309,6 +426,7 @@ const truncated = ref("");
               >数值<input
                 v-model="duration"
                 type="number"
+                min="0"
                 step="any"
                 placeholder="请输入数字，可填写小数" /></label
             ><label class="text-field"
@@ -398,10 +516,13 @@ const truncated = ref("");
       </section>
       <div class="survey-end">
         <div>
-          <strong>问卷前端预览</strong>
-          <p>暂未开放提交，当前填写内容不会发送到服务器。</p>
+          <strong>提交问卷</strong>
+          <p v-if="submitError" role="alert">{{ submitError }}</p>
+          <p v-else>提交后即可查看统计结果。</p>
         </div>
-        <a class="button primary" href="#/studies/chatgpt-account-survey/results">查看统计结果 →</a>
+        <button class="button primary" type="submit" :disabled="submitting">
+          {{ submitting ? "正在提交…" : "提交并查看统计 →" }}
+        </button>
       </div>
     </form>
   </div>
