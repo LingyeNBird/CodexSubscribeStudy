@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import type { Study } from "./types";
 import AccountSurvey from "./AccountSurvey.vue";
+import SurveyResultsPage from "./pages/SurveyResultsPage.vue";
 
 const study = ref<Study | null>(null);
 const route = ref(location.hash.slice(1) || "/");
@@ -12,6 +13,11 @@ const lastRefresh = ref("");
 const controller = new AbortController();
 let timer: ReturnType<typeof setInterval> | undefined;
 const detail = computed(() => route.value === "/studies/gpt6-components");
+const surveyRoute = computed(() =>
+  ["/studies/chatgpt-account-survey", "/studies/chatgpt-account-survey/results"].includes(
+    route.value,
+  ),
+);
 const factorCause = ref("cache_read");
 import HomePage from "./pages/HomePage.vue";
 import StudyPage from "./pages/StudyPage.vue";
@@ -76,13 +82,7 @@ onBeforeUnmount(() => {
         ><span>共研</span></a
       >
       <nav aria-label="主导航">
-        <a
-          href="#/"
-          :aria-current="
-            route === '/' || detail || route === '/studies/chatgpt-account-survey'
-              ? 'page'
-              : undefined
-          "
+        <a href="#/" :aria-current="route === '/' || detail || surveyRoute ? 'page' : undefined"
           >研究项目</a
         ><a href="#/method" :aria-current="route === '/method' ? 'page' : undefined">研究方法</a
         ><a href="#/privacy" :aria-current="route === '/privacy' ? 'page' : undefined"
@@ -103,7 +103,12 @@ onBeforeUnmount(() => {
         ><button @click="load" :disabled="refreshing">重新获取</button>
       </div>
       <HomePage v-if="route === '/'" :study="study" :loading="loading" />
-      <AccountSurvey v-else-if="route === '/studies/chatgpt-account-survey'" />
+      <template v-else-if="surveyRoute">
+        <KeepAlive include="AccountSurvey">
+          <AccountSurvey v-if="route === '/studies/chatgpt-account-survey'" />
+          <SurveyResultsPage v-else />
+        </KeepAlive>
+      </template>
       <StudyPage
         v-else-if="detail"
         :study="study"

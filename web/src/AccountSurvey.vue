@@ -92,7 +92,11 @@ const truncated = ref("");
       <h1>ChatGPT 套餐<br />降智封号统计</h1>
       <p>记录账号情况、使用方式与发生时间，帮助比较不同使用情形。</p>
       <div class="survey-notice" role="note">
-        当前仅供前端体验，不会上传或持久保存答案；刷新或离开问卷后填写内容会清空。“降智”为填写者的观察判断，不代表已确认的模型能力变化。
+        当前仅供前端体验，不会上传或持久保存答案；查看统计再返回时保留填写内容，刷新或离开本研究后清空。“降智”为填写者的观察判断，不代表已确认的模型能力变化。
+      </div>
+      <div class="survey-results-link">
+        <span>想先看看大家的情况？</span>
+        <a class="button" href="#/studies/chatgpt-account-survey/results">不填问卷，直接看统计 →</a>
       </div>
     </header>
 
@@ -397,7 +401,7 @@ const truncated = ref("");
           <strong>问卷前端预览</strong>
           <p>暂未开放提交，当前填写内容不会发送到服务器。</p>
         </div>
-        <button class="button" type="button" disabled>暂未开放提交</button>
+        <a class="button primary" href="#/studies/chatgpt-account-survey/results">查看统计结果 →</a>
       </div>
     </form>
   </div>

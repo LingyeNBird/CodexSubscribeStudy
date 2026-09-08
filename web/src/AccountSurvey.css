@@ -24,6 +24,17 @@
   line-height: 1.85;
   max-width: 800px;
 }
+.survey-results-link {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px 22px;
+  margin-top: 22px;
+}
+.survey-results-link > span {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
 .survey-form {
   display: grid;
   gap: 25px;
@@ -79,9 +90,6 @@
   color: var(--muted);
   font-size: 0.8rem;
   margin: 5px 0 0;
-}
-.survey-end button:disabled {
-  cursor: not-allowed;
 }
 @media (max-width: 720px) {
   .survey-section {

@@ -1,0 +1,127 @@
+.tone-strong {
+  --tone-bg: var(--association-strong);
+}
+.tone-moderate {
+  --tone-bg: var(--peach);
+}
+.tone-weak {
+  --tone-bg: var(--sun);
+}
+.tone-negligible {
+  --tone-bg: var(--mint);
+}
+.tone-unknown {
+  --tone-bg: var(--paper);
+}
+.association-card {
+  background: var(--tone-bg);
+  display: inline-block;
+  width: 100%;
+  box-sizing: border-box;
+  break-inside: avoid;
+  vertical-align: top;
+  margin: 0 0 22px;
+  border: var(--line);
+  border-radius: 20px;
+  box-shadow: 3px 3px 0 var(--ink);
+  padding: 25px;
+  color: var(--ink);
+  min-width: 0;
+}
+.association-card header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin-bottom: 18px;
+}
+.factor-title {
+  font-size: 0.79rem;
+  color: var(--muted);
+  flex: 1;
+}
+.strength-label {
+  font-size: 0.71rem;
+  font-weight: 650;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1.5px solid var(--ink);
+  border-radius: 30px;
+  padding: 3px 10px;
+}
+.association-card h3 {
+  flex-basis: 100%;
+  font-size: 1.25rem;
+  margin: 3px 0 0;
+  overflow-wrap: anywhere;
+}
+.outcome-detail {
+  border-top: 1px solid #b7c4b6;
+  padding-top: 18px;
+  margin-top: 19px;
+}
+.score-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+}
+.score-line strong {
+  font-size: 0.87rem;
+}
+.score-line span {
+  font-size: 1.05rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+.direction-label {
+  display: inline-block;
+  color: var(--ink);
+  background: var(--tone-bg);
+  border: 1px solid #849379;
+  border-radius: 7px;
+  padding: 3px 8px;
+  font-size: 0.71rem;
+  margin-top: 8px;
+}
+.outcome-detail p {
+  font-size: 0.79rem;
+  line-height: 1.8;
+  margin: 9px 0;
+}
+.outcome-detail dl {
+  margin: 0;
+  display: grid;
+  gap: 4px;
+  font-size: 0.75rem;
+}
+.outcome-detail dl > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+}
+.outcome-detail dt {
+  color: var(--muted);
+}
+.outcome-detail dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+.comparison-scope {
+  margin-top: 18px;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+.comparison-scope summary {
+  cursor: pointer;
+}
+.comparison-scope p {
+  margin: 8px 0 0;
+  line-height: 1.8;
+}
+@media (max-width: 720px) {
+  .association-card {
+    padding: 20px;
+  }
+}
