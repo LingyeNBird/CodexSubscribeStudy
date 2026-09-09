@@ -9,3 +9,4 @@
 /review-output/
 .env
 __pycache__/
+/.local-preview/

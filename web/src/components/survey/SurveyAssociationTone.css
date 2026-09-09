@@ -1,0 +1,32 @@
+.tone-more-strong {
+  --tone-bg: #edb5a0;
+  --tone-edge: #b77255;
+}
+.tone-more-moderate {
+  --tone-bg: #f5d0b8;
+  --tone-edge: #bd896d;
+}
+.tone-more-weak {
+  --tone-bg: #fae7d6;
+  --tone-edge: #ccad94;
+}
+.tone-less-strong {
+  --tone-bg: #b2d8c0;
+  --tone-edge: #608c73;
+}
+.tone-less-moderate {
+  --tone-bg: #d0e8d6;
+  --tone-edge: #86ab90;
+}
+.tone-less-weak {
+  --tone-bg: #e1efe3;
+  --tone-edge: #a0b9a3;
+}
+.tone-neutral {
+  --tone-bg: #eeeee3;
+  --tone-edge: #bfc5b4;
+}
+.tone-unknown {
+  --tone-bg: var(--paper);
+  --tone-edge: #d0d5c7;
+}

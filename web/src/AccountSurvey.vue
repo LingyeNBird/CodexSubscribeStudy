@@ -1,14 +1,7 @@
 <script setup lang="ts">
 import { computed, onActivated, reactive, ref } from "vue";
 import { surveyRequest, type SurveySubmission } from "./data/surveyApi";
-import type { Component } from "vue";
-import ClaudeCodeIcon from "./components/icons/ClaudeCodeIcon.vue";
-import OhMyPiIcon from "./components/icons/OhMyPiIcon.vue";
-import OpenCodeIcon from "./components/icons/OpenCodeIcon.vue";
-import CursorIcon from "./components/icons/CursorIcon.vue";
-import ClineIcon from "./components/icons/ClineIcon.vue";
-import RooCodeIcon from "./components/icons/RooCodeIcon.vue";
-import AiderIcon from "./components/icons/AiderIcon.vue";
+import { toolIcons } from "./components/icons/toolIcons";
 
 import CountrySelect from "./components/survey/CountrySelect.vue";
 import EventTimeField from "./components/survey/EventTimeField.vue";
@@ -64,15 +57,6 @@ const thirdParty = reactive(
     (name) => ({ name, selected: false, mode: "" }),
   ),
 );
-const toolIcons: Record<string, Component> = {
-  "Claude Code": ClaudeCodeIcon,
-  "oh-my-pi": OhMyPiIcon,
-  OpenCode: OpenCodeIcon,
-  Cursor: CursorIcon,
-  Cline: ClineIcon,
-  "Roo Code": RooCodeIcon,
-  Aider: AiderIcon,
-};
 const thirdPartyOther = ref("");
 const duration = ref<number | string>("");
 const durationUnit = ref("天");
