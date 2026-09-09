@@ -111,7 +111,7 @@ func validateSurvey(q SurveySubmission) error {
 		if key == "desktopMode" && !q.has("official", "Codex Desktop") {
 			return invalid
 		}
-		if key == "ciMode" && !q.has("official", "Codex CI") {
+		if key == "cliMode" && !q.has("official", "Codex CLI") {
 			return invalid
 		}
 	}

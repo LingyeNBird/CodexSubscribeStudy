@@ -137,7 +137,7 @@ const sections = [
       "tools",
       "official",
       "desktopMode",
-      "ciMode",
+      "cliMode",
       "thirdMode",
     ],
   },
@@ -164,7 +164,7 @@ const layout = (id: string) => {
     [
       "usage",
       "desktopMode",
-      "ciMode",
+      "cliMode",
       "thirdMode",
       "ipStability",
       "shared",

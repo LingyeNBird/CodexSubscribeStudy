@@ -56,7 +56,7 @@ log_evidence, gpt6_quota, information
 
 `status` 为非空字符串数组：正常必须单独选择；降智、封号、风控（限流）可以任意组合，不得重复。`answers.plans` 必填。其他问题允许未作答，未作答不进入对应问题分母。所有提交值经后端白名单及条件关系验证。
 
-`answers` 接受目录 `internal/study/survey_catalog.json` 中的 models、plans、tools、activation、usage、proxy、network、ipStability、official、desktopMode、ciMode、shared、warning、truncated、discovery、limitedDiscovery；值为选项字符串数组，单选必须仅一项，多选不得重复。network 选项为家宽、机房、机场；ipStability 选项为固定 IP、IP 乱飞。网络类型、IP 稳定性和 IP 地区适用于直登或反代，反代工具仅适用于反代。limitedDiscovery 仅在选择风控（限流）时接受，选项为容量达到上限、服务不可用、周限额度明显骤降、其他。
+`answers` 接受目录 `internal/study/survey_catalog.json` 中的 models、plans、tools、activation、usage、proxy、network、ipStability、official、desktopMode、cliMode、shared、warning、truncated、discovery、limitedDiscovery；值为选项字符串数组，单选必须仅一项，多选不得重复。network 选项为家宽、机房、机场；ipStability 选项为固定 IP、IP 乱飞。网络类型、IP 稳定性和 IP 地区适用于直登或反代，反代工具仅适用于反代。limitedDiscovery 仅在选择风控（限流）时接受，选项为容量达到上限、服务不可用、周限额度明显骤降、其他。
 
 `details` 仅接受：
 

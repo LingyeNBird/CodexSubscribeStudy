@@ -68,13 +68,13 @@
     "official": [
       "Web 网页",
       "Codex Desktop",
-      "Codex CI"
+      "Codex CLI"
     ],
     "desktopMode": [
       "反代",
       "直登"
     ],
-    "ciMode": [
+    "cliMode": [
       "反代",
       "直登"
     ],
@@ -207,10 +207,10 @@
       "eligibility": "仅含选择 Codex Desktop 且回答连接方式的问卷。"
     },
     {
-      "key": "ciMode",
-      "title": "Codex CI 连接方式",
+      "key": "cliMode",
+      "title": "Codex CLI 连接方式",
       "description": "使用该官方工具时的连接方式。",
-      "eligibility": "仅含选择 Codex CI 且回答连接方式的问卷。"
+      "eligibility": "仅含选择 Codex CLI 且回答连接方式的问卷。"
     },
     {
       "key": "thirdMode",

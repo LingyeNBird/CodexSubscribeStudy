@@ -62,7 +62,7 @@ const exit = reactive<{
 const official = reactive([
   { name: "Web 网页", selected: false, mode: "", connection: false },
   { name: "Codex Desktop", selected: false, mode: "", connection: true },
-  { name: "Codex CI", selected: false, mode: "", connection: true },
+  { name: "Codex CLI", selected: false, mode: "", connection: true },
 ]);
 const thirdParty = reactive(
   [
@@ -349,7 +349,7 @@ async function submitSurvey() {
   for (const tool of official) {
     if (tool.selected && tool.connection)
       answer(
-        tool.name === "Codex Desktop" ? "desktopMode" : "ciMode",
+        tool.name === "Codex Desktop" ? "desktopMode" : "cliMode",
         tool.mode,
       );
   }
