@@ -2,10 +2,8 @@
 import { computed, ref } from "vue";
 import SurveyAssociationCard from "./SurveyAssociationCard.vue";
 import type { AssociationGroup } from "../../data/surveyApi";
-import type { BinaryAssociation } from "../../data/surveyAssociation";
 const props = defineProps<{
   associations: AssociationGroup[];
-  outcomeAssociation: BinaryAssociation;
 }>();
 const onlyAssociated = ref(false);
 const factor = ref("all");
@@ -32,12 +30,6 @@ const cards = computed(() => {
     .filter((entry) => !onlyAssociated.value || entry.strength >= 0.1)
     .sort((a, b) => b.strength - a.strength);
 });
-const coefficient = (value: number | null) =>
-  value === null ? "无法计算" : `${value > 0 ? "+" : ""}${value.toFixed(3)}`;
-const rate = (group: BinaryAssociation["selected"]) =>
-  group.total
-    ? `${group.events}/${group.total}（${((group.events / group.total) * 100).toFixed(1)}%）`
-    : "无可比较样本";
 </script>
 
 <template>
@@ -48,22 +40,6 @@ const rate = (group: BinaryAssociation["selected"]) =>
         对比选择某个因素选项与未选择该项的问卷，观察降智、封号和风控（限流）。相关性不等于因果，也不表示时间先后。
       </p>
     </header>
-    <section class="outcome-association" aria-label="降智与封号的关联">
-      <div>
-        <h3>降智与封号是否共同出现？</h3>
-        <p>将“报告降智”与“报告封号”作为两个二元变量。</p>
-      </div>
-      <div class="outcome-phi">
-        <span>相关系数 φ</span><strong>{{ coefficient(outcomeAssociation.phi) }}</strong>
-      </div>
-      <div class="outcome-rates">
-        <span
-          >报告降智者中的封号比例<strong>{{ rate(outcomeAssociation.selected) }}</strong></span
-        ><span
-          >未报告降智者中的封号比例<strong>{{ rate(outcomeAssociation.unselected) }}</strong></span
-        >
-      </div>
-    </section>
     <div class="correlation-toolbar">
       <label for="correlation-factor"
         >比较因素<select id="correlation-factor" v-model="factor">

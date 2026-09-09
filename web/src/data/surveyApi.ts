@@ -30,7 +30,6 @@ export interface SurveyStatistics {
   both: number;
   factors: FactorDistribution[];
   associations: AssociationGroup[];
-  outcomeAssociation: BinaryAssociation;
   usagePattern: { total: number; levels: number[] };
   range: {
     firstSubmissionId: number;

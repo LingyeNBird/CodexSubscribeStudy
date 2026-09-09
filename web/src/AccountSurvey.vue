@@ -216,10 +216,14 @@ async function submitSurvey() {
       <div class="survey-notice" role="note">
         “降智”为填写者的观察判断，不代表已确认的模型能力变化。账号情况和套餐级别为必填，其余问题可按实际情况填写。
       </div>
-      <div v-if="submittedBefore" class="survey-notice" role="status">你貌似已提交过</div>
       <div class="survey-results-link">
         <span>想先看看大家的情况？</span>
-        <a class="button" href="#/studies/chatgpt-account-survey/results">不填问卷，直接看统计 →</a>
+        <a
+          class="button"
+          :class="{ primary: submittedBefore }"
+          href="#/studies/chatgpt-account-survey/results"
+          >{{ submittedBefore ? "你貌似已提交过，直接看统计 →" : "不填问卷，直接看统计 →" }}</a
+        >
       </div>
     </header>
 

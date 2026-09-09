@@ -67,18 +67,17 @@ type surveyUsagePattern struct {
 	Levels [24]float64 `json:"levels"`
 }
 type surveyStatistics struct {
-	Total              int                      `json:"total"`
-	Degraded           int                      `json:"degraded"`
-	Banned             int                      `json:"banned"`
-	Limited            int                      `json:"limited"`
-	Statuses           []surveyStatusCount      `json:"statuses"`
-	Normal             int                      `json:"normal"`
-	Both               int                      `json:"both"`
-	Factors            []surveyFactor           `json:"factors"`
-	Associations       []surveyAssociationGroup `json:"associations"`
-	OutcomeAssociation surveyAssociation        `json:"outcomeAssociation"`
-	UsagePattern       surveyUsagePattern       `json:"usagePattern"`
-	Range              surveyStatisticsRange    `json:"range"`
+	Total        int                      `json:"total"`
+	Degraded     int                      `json:"degraded"`
+	Banned       int                      `json:"banned"`
+	Limited      int                      `json:"limited"`
+	Statuses     []surveyStatusCount      `json:"statuses"`
+	Normal       int                      `json:"normal"`
+	Both         int                      `json:"both"`
+	Factors      []surveyFactor           `json:"factors"`
+	Associations []surveyAssociationGroup `json:"associations"`
+	UsagePattern surveyUsagePattern       `json:"usagePattern"`
+	Range        surveyStatisticsRange    `json:"range"`
 }
 
 type surveyStatisticsRange struct {

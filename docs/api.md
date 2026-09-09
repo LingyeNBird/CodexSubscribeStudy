@@ -73,7 +73,7 @@ log_evidence, gpt6_quota, information
 
 可选 `ipRisk` 为0至100的整数，在使用方式包含直登或反代时接受。0为最低风险，100为最高风险；未填写时省略。统计按0–14、15–24、25–39、40–49、50–69、70–100分组。
 
-统计返回 total、degraded、banned、limited、normal、both、statuses、factors、associations、outcomeAssociation、usagePattern 和 range。各异常计数包含重叠问卷；both 为同时报告降智与封号的份数；statuses 按八种互斥状态组合返回 label、count、tone。factors 和 associations 分别提供 degraded、banned、limited 三类异常的分布和关联。usagePattern 返回有效回答 total 和各小时平均格数 levels；百分比为平均格数÷24。
+统计返回 total、degraded、banned、limited、normal、both、statuses、factors、associations、usagePattern 和 range。各异常计数包含重叠问卷；both 为同时报告降智与封号的份数；statuses 按八种互斥状态组合返回 label、count、tone。factors 和 associations 分别提供 degraded、banned、limited 三类异常的分布和关联。usagePattern 返回有效回答 total 和各小时平均格数 levels；百分比为平均格数÷24。
 
 `range` 包含 firstSubmissionId、lastSubmissionId（已纳入统计的提交编号范围）、firstSubmittedAt、lastSubmittedAt（已知提交时间的最小值和最大值）、unknownTimeCount（提交时间未知的历史问卷数）、computedAt（本次结果计算时间）。无问卷时编号为0、提交时间为null；时间未知不等于问卷未被统计。
 

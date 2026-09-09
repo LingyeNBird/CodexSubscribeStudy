@@ -217,7 +217,6 @@ func (state *surveyCachedAggregate) statistics() surveyStatistics {
 		}
 		result.Associations = append(result.Associations, group)
 	}
-	result.OutcomeAssociation = association(result.Both, result.Degraded-result.Both, result.Banned-result.Both, result.Total-result.Degraded-result.Banned+result.Both)
 	return result
 }
 

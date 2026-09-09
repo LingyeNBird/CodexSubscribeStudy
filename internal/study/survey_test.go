@@ -60,9 +60,6 @@ func TestSurveyPersistenceAndRepeatedSubmission(t *testing.T) {
 	if stats.Total != 3 || stats.Both != 2 || stats.Normal != 1 || stats.Degraded != 2 || stats.Banned != 2 {
 		t.Fatalf("incorrect totals %+v", stats)
 	}
-	if stats.OutcomeAssociation.Phi == nil || *stats.OutcomeAssociation.Phi != 1 {
-		t.Fatal("overlap association")
-	}
 	for _, g := range stats.Associations {
 		if g.ID == "proxy" {
 			if g.Total != 2 || g.Rows[2].Degraded.Phi != nil {
@@ -165,12 +162,6 @@ func TestSurveyStatusMigrationAndRateLimiting(t *testing.T) {
 	}
 	if stats.Total != 6 || stats.Normal != 1 || stats.Degraded != 3 || stats.Banned != 3 || stats.Limited != 2 || stats.Both != 2 {
 		t.Fatalf("wrong totals: %+v", stats)
-	}
-	if stats.OutcomeAssociation.Unselected.Total != 3 || stats.OutcomeAssociation.Unselected.Events != 1 {
-		t.Fatal("rate-limited-only sample lost from comparison")
-	}
-	if stats.OutcomeAssociation.Phi == nil || *stats.OutcomeAssociation.Phi != 1.0/3 {
-		t.Fatal("wrong overlap correlation")
 	}
 	sum := 0
 	for _, status := range stats.Statuses {

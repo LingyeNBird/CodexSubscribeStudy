@@ -8,7 +8,7 @@ import { surveyRequest, type SurveyStatistics } from "../data/surveyApi";
 const statistics = ref<SurveyStatistics | null>(null);
 const loading = ref(false);
 const error = ref("");
-const analysisView = ref<"distribution" | "correlation">("distribution");
+const analysisView = ref<"distribution" | "correlation">("correlation");
 async function loadStatistics() {
   if (loading.value) return;
   loading.value = true;
@@ -124,7 +124,7 @@ const formatTime = (value: string) => new Date(value).toLocaleString("zh-CN", { 
       <template v-if="statistics && statistics.total > 0">
         <div class="status-strip" aria-hidden="true">
           <span
-            v-for="item in statuses"
+            v-for="item in statuses.filter((item) => item.count > 0)"
             :key="item.label"
             :class="item.tone"
             :style="{ flexGrow: item.count }"
@@ -157,19 +157,24 @@ const formatTime = (value: string) => new Date(value).toLocaleString("zh-CN", { 
     <div class="analysis-switch" role="group" aria-label="统计分析板块">
       <button
         type="button"
-        :aria-pressed="analysisView === 'distribution'"
-        @click="analysisView = 'distribution'"
-      >
-        异常样本分布
-      </button>
-      <button
-        type="button"
         :aria-pressed="analysisView === 'correlation'"
         @click="analysisView = 'correlation'"
       >
         异常相关性
       </button>
+      <button
+        type="button"
+        :aria-pressed="analysisView === 'distribution'"
+        @click="analysisView = 'distribution'"
+      >
+        异常样本分布
+      </button>
     </div>
+    <SurveyCorrelationPanel
+      v-if="statistics"
+      v-show="analysisView === 'correlation'"
+      :associations="statistics.associations"
+    />
     <section
       v-show="analysisView === 'distribution'"
       class="factors-section"
@@ -204,13 +209,6 @@ const formatTime = (value: string) => new Date(value).toLocaleString("zh-CN", { 
         <p v-else>暂无使用规律数据。</p>
       </section>
     </section>
-
-    <SurveyCorrelationPanel
-      v-if="statistics"
-      v-show="analysisView === 'correlation'"
-      :associations="statistics.associations"
-      :outcome-association="statistics.outcomeAssociation"
-    />
 
     <section class="results-reading">
       <h2>这些数字应当怎样理解？</h2>
