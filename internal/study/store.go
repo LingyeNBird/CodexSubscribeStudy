@@ -2,22 +2,19 @@ package study
 
 import (
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
+	"strconv"
 	"time"
 
-	bolt "go.etcd.io/bbolt"
+	"github.com/LingyeNBird/CodexSubscribeStudy/internal/database"
 )
 
 var ErrConflict = errors.New("revision conflicts")
 var ErrCapacity = errors.New("contribution capacity")
-
-var batchesBucket = []byte("evidence-batches")
-var identitiesBucket = []byte("evidence-identities")
 
 type Stored struct {
 	Report       Report `json:"report"`
@@ -30,7 +27,7 @@ type IdentityState struct {
 }
 
 type Store struct {
-	db           *bolt.DB
+	db           *database.DB
 	maxReporters int
 	now          func() time.Time
 }
@@ -39,114 +36,107 @@ func Open(path string, maxReporters int) (*Store, error) {
 	if maxReporters < 1 {
 		return nil, errors.New("invalid capacity")
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
-		return nil, err
-	}
-	db, err := bolt.Open(path, 0600, &bolt.Options{Timeout: 3 * time.Second})
+	db, err := database.Open(path)
 	if err != nil {
-		return nil, err
-	}
-	if err = db.Update(func(tx *bolt.Tx) error {
-		for _, key := range [][]byte{batchesBucket, identitiesBucket} {
-			if _, createErr := tx.CreateBucketIfNotExists(key); createErr != nil {
-				return createErr
-			}
-		}
-		return initSurvey(tx)
-	}); err != nil {
-		_ = db.Close()
 		return nil, err
 	}
 	return &Store{db: db, maxReporters: maxReporters, now: time.Now}, nil
 }
+func (s *Store) Close() error             { return s.db.Close() }
+func (s *Store) Backup(path string) error { return s.db.Backup(path) }
 
-func (s *Store) Close() error { return s.db.Close() }
-
-func (s *Store) Backup(path string) error {
-	return s.db.View(func(tx *bolt.Tx) error { return tx.CopyFile(path, 0600) })
-}
-
-func reporterKey(public string) []byte {
-	digest := sha256.Sum256([]byte(public))
-	return digest[:]
-}
-
-func batchKey(public, id string) []byte {
-	return append(append(reporterKey(public), ':'), []byte(id)...)
-}
-
-func loadIdentity(tx *bolt.Tx, key []byte) (IdentityState, error) {
-	var state IdentityState
-	if data := tx.Bucket(identitiesBucket).Get(key); data != nil {
-		if err := json.Unmarshal(data, &state); err != nil {
-			return state, err
-		}
-	}
-	return state, nil
-}
-
-func saveIdentity(tx *bolt.Tx, key []byte, state IdentityState) error {
-	data, err := json.Marshal(state)
-	if err != nil {
-		return err
-	}
-	return tx.Bucket(identitiesBucket).Put(key, data)
-}
+func reporterKey(public string) []byte { digest := sha256.Sum256([]byte(public)); return digest[:] }
 
 func (s *Store) Put(report Report, body []byte) (bool, error) {
 	duplicate := false
-	hash := fmt.Sprintf("%x", sha256.Sum256(body))
+	digest := fmt.Sprintf("%x", sha256.Sum256(body))
 	key := reporterKey(report.PublicKey)
-	bkey := batchKey(report.PublicKey, report.BatchID)
-	err := s.db.Update(func(tx *bolt.Tx) error {
-		state, err := loadIdentity(tx, key)
-		if err != nil {
+	err := s.db.Update(func(tx *sql.Tx) error {
+		var highestText string
+		err := tx.QueryRow("SELECT highest_revision FROM evidence_identities WHERE reporter_id=?", key).Scan(&highestText)
+		exists := err == nil
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return err
 		}
-		batches := tx.Bucket(batchesBucket)
-		var existing Stored
-		if raw := batches.Get(bkey); raw != nil {
-			if err := json.Unmarshal(raw, &existing); err != nil {
+		var highest uint64
+		if exists {
+			highest, err = strconv.ParseUint(highestText, 10, 64)
+			if err != nil {
 				return err
 			}
-			if report.Revision == existing.Report.Revision && existing.Digest == hash {
-				duplicate = true
-				return nil
-			}
 		}
-		if report.Revision <= state.Highest {
+		var existingRevision, existingDigest string
+		err = tx.QueryRow("SELECT revision,digest FROM evidence_batches WHERE reporter_id=? AND batch_id=?", key, report.BatchID).Scan(&existingRevision, &existingDigest)
+		batchExists := err == nil
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		if batchExists && existingRevision == strconv.FormatUint(report.Revision, 10) && existingDigest == digest {
+			duplicate = true
+			return nil
+		}
+		if report.Revision <= highest {
 			return ErrConflict
 		}
-		if tx.Bucket(identitiesBucket).Get(key) == nil && tx.Bucket(identitiesBucket).Stats().KeyN >= s.maxReporters {
-			return ErrCapacity
+		if !exists {
+			var count int
+			if err := tx.QueryRow("SELECT COUNT(*) FROM evidence_identities").Scan(&count); err != nil {
+				return err
+			}
+			if count >= s.maxReporters {
+				return ErrCapacity
+			}
 		}
-		if batches.Get(bkey) == nil && batches.Stats().KeyN >= 100000 {
-			return ErrCapacity
+		if !batchExists {
+			var count int
+			if err := tx.QueryRow("SELECT COUNT(*) FROM evidence_batches").Scan(&count); err != nil {
+				return err
+			}
+			if count >= 100000 {
+				return ErrCapacity
+			}
 		}
-		data, err := json.Marshal(Stored{Report: report, Digest: hash, ReceivedHour: s.now().UTC().Unix() / 3600})
+		encoded, err := json.Marshal(report)
 		if err != nil {
 			return err
 		}
-		if err := batches.Put(bkey, data); err != nil {
+		revision := strconv.FormatUint(report.Revision, 10)
+		if _, err := tx.Exec(`INSERT INTO evidence_identities(reporter_id,highest_revision) VALUES(?,?)
+   ON CONFLICT(reporter_id) DO UPDATE SET highest_revision=excluded.highest_revision`, key, revision); err != nil {
 			return err
 		}
-		state.Highest = report.Revision
-		return saveIdentity(tx, key, state)
+		_, err = tx.Exec(`INSERT INTO evidence_batches(reporter_id,batch_id,revision,digest,received_hour,report_json) VALUES(?,?,?,?,?,?)
+   ON CONFLICT(reporter_id,batch_id) DO UPDATE SET revision=excluded.revision,digest=excluded.digest,received_hour=excluded.received_hour,report_json=excluded.report_json`,
+			key, report.BatchID, revision, digest, s.now().UTC().Unix()/3600, string(encoded))
+		return err
 	})
 	return duplicate, err
 }
 
 func (s *Store) Walk(visit func(string, Summary, int64) error) error {
-	return s.db.View(func(tx *bolt.Tx) error {
-		return tx.Bucket(batchesBucket).ForEach(func(k, value []byte) error {
-			var item Stored
-			if err := json.Unmarshal(value, &item); err != nil {
+	return s.db.View(func(tx *sql.Tx) error {
+		rows, err := tx.Query("SELECT reporter_id,report_json,received_hour FROM evidence_batches ORDER BY reporter_id,batch_id")
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var key, body []byte
+			var received int64
+			if err := rows.Scan(&key, &body, &received); err != nil {
 				return err
 			}
-			if item.Report.Summary == nil {
+			var report Report
+			if err := json.Unmarshal(body, &report); err != nil {
+				return err
+			}
+			if report.Summary == nil {
 				return errors.New("stored summary missing")
 			}
-			return visit(hex.EncodeToString(k[:32]), *item.Report.Summary, item.ReceivedHour)
-		})
+			if err := visit(hex.EncodeToString(key), *report.Summary, received); err != nil {
+				return err
+			}
+		}
+		return rows.Err()
 	})
 }

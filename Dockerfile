@@ -17,7 +17,7 @@ FROM alpine:3.22
 RUN addgroup -g 10001 study && adduser -D -u 10001 -G study study && mkdir /data && chown study:study /data
 COPY --from=backend /study /usr/local/bin/study
 USER 10001:10001
-ENV STUDY_ADDR=:8080 STUDY_DB=/data/study.db
+ENV STUDY_ADDR=:8080 STUDY_DB=/data/study.sqlite STUDY_LEGACY_DB=/data/study.db
 VOLUME ["/data"]
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=3s CMD wget -q -O /dev/null http://127.0.0.1:8080/healthz || exit 1

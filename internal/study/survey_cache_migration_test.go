@@ -2,58 +2,78 @@ package study
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"reflect"
 	"testing"
 	"testing/fstest"
-
-	bolt "go.etcd.io/bbolt"
 )
+
+func surveyRows(tx *sql.Tx) (map[uint64][]byte, error) {
+	rows, err := tx.Query("SELECT id,payload FROM survey_submissions ORDER BY id")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := map[uint64][]byte{}
+	for rows.Next() {
+		var id uint64
+		var body []byte
+		if err := rows.Scan(&id, &body); err != nil {
+			return nil, err
+		}
+		result[id] = bytes.Clone(body)
+	}
+	return result, rows.Err()
+}
 
 func TestSurveyCountsMigrationPreservesRawRecords(t *testing.T) {
 	for _, size := range []int{0, 9} {
 		t.Run(fmt.Sprint(size), func(t *testing.T) {
-			path := filepath.Join(t.TempDir(), "survey.db")
+			path := filepath.Join(t.TempDir(), "survey.sqlite")
 			store, err := Open(path, 10)
 			if err != nil {
 				t.Fatal(err)
 			}
 			defer func() { store.Close() }()
-			for i := 0; i < size; i++ {
+			for i := range size {
 				if err := store.putSurvey(cacheQuestion(i)); err != nil {
 					t.Fatal(err)
 				}
 			}
-			server := NewServer(store, fstest.MapFS{})
-			before, err := server.surveyStatistics()
+			before, err := NewServer(store, fstest.MapFS{}).surveyStatistics()
 			if err != nil {
 				t.Fatal(err)
 			}
-			original := map[string][]byte{}
+			var original map[uint64][]byte
 			var sequence uint64
-			if err := store.db.Update(func(tx *bolt.Tx) error {
-				bucket := tx.Bucket(surveyBucket)
-				sequence = bucket.Sequence()
-				if err := bucket.ForEach(func(key, value []byte) error {
-					original[string(key)] = bytes.Clone(value)
-					return nil
-				}); err != nil {
-					return err
-				}
-				meta := tx.Bucket(surveyCacheBucket)
-				var legacy map[string]json.RawMessage
-				if err := json.Unmarshal(meta.Get(surveyCacheStateKey), &legacy); err != nil {
-					return err
-				}
-				legacy["version"] = json.RawMessage(`1`)
-				legacy["result"] = json.RawMessage(`{"total":999999,"associations":[]}`)
-				raw, err := json.Marshal(legacy)
+			if err := store.db.Update(func(tx *sql.Tx) error {
+				var err error
+				original, err = surveyRows(tx)
 				if err != nil {
 					return err
 				}
-				return meta.Put(surveyCacheStateKey, raw)
+				if err := tx.QueryRow("SELECT COALESCE((SELECT seq FROM sqlite_sequence WHERE name='survey_submissions'),0)").Scan(&sequence); err != nil {
+					return err
+				}
+				body, err := readSurveyAggregate(tx)
+				if err != nil {
+					return err
+				}
+				var legacy map[string]json.RawMessage
+				if err := json.Unmarshal(body, &legacy); err != nil {
+					return err
+				}
+				legacy["version"] = json.RawMessage(`1`)
+				legacy["result"] = json.RawMessage(`{"total":999999}`)
+				body, err = json.Marshal(legacy)
+				if err != nil {
+					return err
+				}
+				_, err = tx.Exec("UPDATE survey_statistics SET payload=? WHERE id=1", string(body))
+				return err
 			}); err != nil {
 				t.Fatal(err)
 			}
@@ -64,30 +84,32 @@ func TestSurveyCountsMigrationPreservesRawRecords(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			server = NewServer(store, fstest.MapFS{})
+			server := NewServer(store, fstest.MapFS{})
 			after, err := server.surveyStatistics()
 			if err != nil {
 				t.Fatal(err)
 			}
 			if !reflect.DeepEqual(before, after) {
-				t.Fatal("upgrade changed counts, timestamps, range, or metadata")
+				t.Fatal("cache upgrade changed counts or range")
 			}
-			if err := store.db.View(func(tx *bolt.Tx) error {
-				bucket := tx.Bucket(surveyBucket)
-				if bucket.Sequence() != sequence || bucket.Stats().KeyN != len(original) {
-					return fmt.Errorf("raw record sequence or size changed")
+			if err := store.db.View(func(tx *sql.Tx) error {
+				current, err := surveyRows(tx)
+				if err != nil {
+					return err
 				}
-				for key, value := range original {
-					if !bytes.Equal(bucket.Get([]byte(key)), value) {
-						return fmt.Errorf("raw record bytes changed")
-					}
+				if !reflect.DeepEqual(original, current) {
+					return fmt.Errorf("cache upgrade changed raw records")
+				}
+				body, err := readSurveyAggregate(tx)
+				if err != nil {
+					return err
 				}
 				var cache map[string]json.RawMessage
-				if err := json.Unmarshal(tx.Bucket(surveyCacheBucket).Get(surveyCacheStateKey), &cache); err != nil {
+				if err := json.Unmarshal(body, &cache); err != nil {
 					return err
 				}
 				if string(cache["version"]) != "2" || cache["result"] != nil {
-					return fmt.Errorf("obsolete derived cache was not migrated")
+					return fmt.Errorf("obsolete derived cache remains")
 				}
 				return nil
 			}); err != nil {
@@ -103,12 +125,16 @@ func TestSurveyCountsMigrationPreservesRawRecords(t *testing.T) {
 			expected := before.Statuses
 			expected[7]++
 			if appended.Statuses != expected || appended.Range.LastSubmissionID != sequence+1 {
-				t.Fatal("append after migration lost or duplicated history")
+				t.Fatal("append lost or duplicated history")
 			}
-			if err := store.db.View(func(tx *bolt.Tx) error {
-				for key, value := range original {
-					if !bytes.Equal(tx.Bucket(surveyBucket).Get([]byte(key)), value) {
-						return fmt.Errorf("incremental refresh changed historical bytes")
+			if err := store.db.View(func(tx *sql.Tx) error {
+				current, err := surveyRows(tx)
+				if err != nil {
+					return err
+				}
+				for id, body := range original {
+					if !bytes.Equal(current[id], body) {
+						return fmt.Errorf("incremental refresh changed historical data")
 					}
 				}
 				return nil

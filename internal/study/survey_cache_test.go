@@ -1,7 +1,7 @@
 package study
 
 import (
-	"encoding/binary"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http/httptest"
@@ -13,8 +13,6 @@ import (
 	"testing"
 	"testing/fstest"
 	"time"
-
-	bolt "go.etcd.io/bbolt"
 )
 
 func testSurveyCount(counts [8]int) int {
@@ -61,8 +59,8 @@ func TestSurveyIncrementalMatchesRawEvidence(t *testing.T) {
 	store := openTest(t, 10)
 	server := NewServer(store, fstest.MapFS{})
 	var records []SurveySubmission
-	for batch := 0; batch < 4; batch++ {
-		for i := 0; i < 13; i++ {
+	for range 4 {
+		for range 13 {
 			q := cacheQuestion(len(records))
 			if err := validateSurvey(q); err != nil {
 				t.Fatal(err)
@@ -152,10 +150,13 @@ func TestSurveyCacheSurvivesRestartAndSkipsOldRecords(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// A cached historical record is deliberately unreadable: only the persisted counts may be used.
-	if err := store.db.Update(func(tx *bolt.Tx) error {
-		meta := tx.Bucket(surveyCacheBucket)
-		state, valid := decodeSurveyAggregate(meta.Get(surveyCacheStateKey))
+	// A cached historical record cannot be aggregated again; persisted counts must be reused.
+	if err := store.db.Update(func(tx *sql.Tx) error {
+		raw, err := readSurveyAggregate(tx)
+		if err != nil {
+			return err
+		}
+		state, valid := decodeSurveyAggregate(raw)
 		if !valid {
 			return fmt.Errorf("missing cache")
 		}
@@ -164,12 +165,11 @@ func TestSurveyCacheSurvivesRestartAndSkipsOldRecords(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		if err := meta.Put(surveyCacheStateKey, legacy); err != nil {
+		if _, err := tx.Exec("UPDATE survey_statistics SET payload=? WHERE id=1", string(legacy)); err != nil {
 			return err
 		}
-		var key [8]byte
-		binary.BigEndian.PutUint64(key[:], 1)
-		return tx.Bucket(surveyBucket).Put(key[:], []byte("unreadable historical record"))
+		_, err = tx.Exec(`UPDATE survey_submissions SET payload='{"usagePattern":[]}' WHERE id=1`)
+		return err
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -214,23 +214,21 @@ func TestSurveyCacheRefreshIsAtomicAndConcurrent(t *testing.T) {
 	if err := store.putSurvey(cacheQuestion(1)); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.db.Update(func(tx *bolt.Tx) error {
-		bucket := tx.Bucket(surveyBucket)
-		id, err := bucket.NextSequence()
-		if err != nil {
-			return err
-		}
-		var key [8]byte
-		binary.BigEndian.PutUint64(key[:], id)
-		return bucket.Put(key[:], []byte("invalid"))
+	if err := store.db.Update(func(tx *sql.Tx) error {
+		_, err := tx.Exec(`INSERT INTO survey_submissions(status_mask,payload) VALUES(0,'{"usagePattern":[]}')`)
+		return err
 	}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := server.surveyStatistics(); err == nil {
 		t.Fatal("invalid incremental record accepted")
 	}
-	if err := store.db.View(func(tx *bolt.Tx) error {
-		state, valid := decodeSurveyAggregate(tx.Bucket(surveyCacheBucket).Get(surveyCacheStateKey))
+	if err := store.db.View(func(tx *sql.Tx) error {
+		raw, err := readSurveyAggregate(tx)
+		if err != nil {
+			return err
+		}
+		state, valid := decodeSurveyAggregate(raw)
 		if !valid || testSurveyCount(state.Counts.Statuses) != 0 || state.Range.LastSubmissionID != 0 {
 			return fmt.Errorf("failed refresh advanced progress")
 		}
@@ -238,17 +236,16 @@ func TestSurveyCacheRefreshIsAtomicAndConcurrent(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.db.Update(func(tx *bolt.Tx) error {
-		var key [8]byte
-		binary.BigEndian.PutUint64(key[:], 2)
+	if err := store.db.Update(func(tx *sql.Tx) error {
 		body, _ := json.Marshal(cacheQuestion(2))
-		return tx.Bucket(surveyBucket).Put(key[:], body)
+		_, err := tx.Exec("UPDATE survey_submissions SET status_mask=2,payload=? WHERE id=2", string(body))
+		return err
 	}); err != nil {
 		t.Fatal(err)
 	}
 	var wg sync.WaitGroup
 	failures := make(chan error, 40)
-	for i := 0; i < 20; i++ {
+	for i := range 20 {
 		wg.Add(2)
 		go func(i int) { defer wg.Done(); failures <- store.putSurvey(cacheQuestion(i)) }(i)
 		go func() { defer wg.Done(); _, err := server.surveyStatistics(); failures <- err }()
@@ -276,24 +273,8 @@ func TestSurveyServerTimeAndLegacyRiskMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	legacy := `{"status":["正常"],"answers":{"plans":["Plus"],"usage":["反代"],"network":["宽带"],"quality":["优秀"]}}`
-	if err := store.db.Update(func(tx *bolt.Tx) error {
-		bucket := tx.Bucket(surveyBucket)
-		id, err := bucket.NextSequence()
-		if err != nil {
-			return err
-		}
-		var key [8]byte
-		binary.BigEndian.PutUint64(key[:], id)
-		if err := bucket.Put(key[:], []byte(legacy)); err != nil {
-			return err
-		}
-		return tx.Bucket(surveyCacheBucket).Delete(surveyStorageVersionKey)
-	}); err != nil {
-		t.Fatal(err)
-	}
-	store.Close()
-	store, err = Open(path, 10)
-	if err != nil {
+	legacyPath := createLegacySurveys(t, "", map[uint64][]byte{1: []byte(legacy)}, 1)
+	if _, err := store.ImportBbolt(legacyPath); err != nil {
 		t.Fatal(err)
 	}
 	defer store.Close()
@@ -338,11 +319,13 @@ func TestSurveyServerTimeAndLegacyRiskMigration(t *testing.T) {
 			t.Fatal("network migration")
 		}
 	}
-	if err := store.db.View(func(tx *bolt.Tx) error {
-		var key [8]byte
-		binary.BigEndian.PutUint64(key[:], 1)
+	if err := store.db.View(func(tx *sql.Tx) error {
+		var body []byte
+		if err := tx.QueryRow("SELECT payload FROM survey_submissions WHERE id=1").Scan(&body); err != nil {
+			return err
+		}
 		var record storedSurveyRecord
-		if err := json.Unmarshal(tx.Bucket(surveyBucket).Get(key[:]), &record); err != nil {
+		if err := json.Unmarshal(body, &record); err != nil {
 			return err
 		}
 		if record.SubmittedAt != nil || string(record.LegacyIPQuality) != `["优秀"]` {
@@ -363,9 +346,12 @@ func TestSurveyCacheInvalidationRebuildsEvidence(t *testing.T) {
 	if _, err := server.surveyStatistics(); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.db.Update(func(tx *bolt.Tx) error {
-		meta := tx.Bucket(surveyCacheBucket)
-		state, valid := decodeSurveyAggregate(meta.Get(surveyCacheStateKey))
+	if err := store.db.Update(func(tx *sql.Tx) error {
+		raw, err := readSurveyAggregate(tx)
+		if err != nil {
+			return err
+		}
+		state, valid := decodeSurveyAggregate(raw)
 		if !valid {
 			return fmt.Errorf("missing cache")
 		}
@@ -374,16 +360,15 @@ func TestSurveyCacheInvalidationRebuildsEvidence(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		if err := meta.Put(surveyCacheStateKey, body); err != nil {
+		if _, err := tx.Exec("UPDATE survey_statistics SET payload=? WHERE id=1", string(body)); err != nil {
 			return err
 		}
-		var key [8]byte
-		binary.BigEndian.PutUint64(key[:], 1)
 		replacement, err := json.Marshal(cacheQuestion(7))
 		if err != nil {
 			return err
 		}
-		return tx.Bucket(surveyBucket).Put(key[:], replacement)
+		_, err = tx.Exec("UPDATE survey_submissions SET status_mask=7,payload=? WHERE id=1", string(replacement))
+		return err
 	}); err != nil {
 		t.Fatal(err)
 	}

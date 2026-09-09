@@ -2,19 +2,16 @@ package study
 
 import (
 	"crypto/sha256"
-	"encoding/binary"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"slices"
-
-	bolt "go.etcd.io/bbolt"
 )
 
 // Version 2 drops derived results; version 1 has identical counts and is upgraded in place.
 const surveyCacheVersion = 2
 
-var surveyCacheStateKey = []byte("aggregate")
 var surveyCatalogDigest = func() string {
 	digest := sha256.Sum256(surveyCatalogJSON)
 	return hex.EncodeToString(digest[:])
@@ -72,29 +69,24 @@ func decodeSurveyAggregate(raw []byte) (surveyCachedAggregate, bool) {
 	return state, true
 }
 
-func lastSurveyID(bucket *bolt.Bucket) (uint64, error) {
-	key, _ := bucket.Cursor().Last()
-	if key == nil {
-		return 0, nil
+func lastSurveyID(tx *sql.Tx) (uint64, error) {
+	var id uint64
+	err := tx.QueryRow("SELECT COALESCE(MAX(id),0) FROM survey_submissions").Scan(&id)
+	return id, err
+}
+
+func readSurveyAggregate(tx *sql.Tx) ([]byte, error) {
+	var body []byte
+	err := tx.QueryRow("SELECT payload FROM survey_statistics WHERE id=1").Scan(&body)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
 	}
-	if len(key) != 8 {
-		return 0, errors.New("invalid stored survey key")
-	}
-	return binary.BigEndian.Uint64(key), nil
+	return body, err
 }
 
 func (state *surveyCachedAggregate) add(id uint64, record storedSurveyRecord) error {
 	q := record.SurveySubmission
-	mask := 0
-	if q.degraded() {
-		mask |= 1
-	}
-	if q.banned() {
-		mask |= 2
-	}
-	if q.limited() {
-		mask |= 4
-	}
+	mask := surveyStatusMask(q)
 	state.Counts.Statuses[mask]++
 	if q.UsagePattern != nil {
 		if len(q.UsagePattern) != 24 {
@@ -176,12 +168,16 @@ func (state *surveyCachedAggregate) summary() surveySummary {
 func (s *Server) surveyStatistics() (surveySummary, error) {
 	var result surveySummary
 	hit := false
-	err := s.store.db.View(func(tx *bolt.Tx) error {
-		last, err := lastSurveyID(tx.Bucket(surveyBucket))
+	err := s.store.db.View(func(tx *sql.Tx) error {
+		last, err := lastSurveyID(tx)
 		if err != nil {
 			return err
 		}
-		state, valid := decodeSurveyAggregate(tx.Bucket(surveyCacheBucket).Get(surveyCacheStateKey))
+		raw, err := readSurveyAggregate(tx)
+		if err != nil {
+			return err
+		}
+		state, valid := decodeSurveyAggregate(raw)
 		if valid && state.Version == surveyCacheVersion && state.Range.LastSubmissionID == last {
 			result = state.summary()
 			hit = true
@@ -192,14 +188,16 @@ func (s *Server) surveyStatistics() (surveySummary, error) {
 		return result, err
 	}
 	// Refreshes and version upgrades atomically commit counts and their cutoff, never raw answers.
-	err = s.store.db.Update(func(tx *bolt.Tx) error {
-		bucket := tx.Bucket(surveyBucket)
-		meta := tx.Bucket(surveyCacheBucket)
-		last, err := lastSurveyID(bucket)
+	err = s.store.db.Update(func(tx *sql.Tx) error {
+		last, err := lastSurveyID(tx)
 		if err != nil {
 			return err
 		}
-		state, valid := decodeSurveyAggregate(meta.Get(surveyCacheStateKey))
+		raw, err := readSurveyAggregate(tx)
+		if err != nil {
+			return err
+		}
+		state, valid := decodeSurveyAggregate(raw)
 		if valid && state.Version == surveyCacheVersion && state.Range.LastSubmissionID == last {
 			result = state.summary()
 			return nil
@@ -208,20 +206,30 @@ func (s *Server) surveyStatistics() (surveySummary, error) {
 			state = newSurveyAggregate()
 		}
 		previousCutoff := state.Range.LastSubmissionID
-		var next [8]byte
-		binary.BigEndian.PutUint64(next[:], state.Range.LastSubmissionID+1)
-		cursor := bucket.Cursor()
-		for key, body := cursor.Seek(next[:]); key != nil; key, body = cursor.Next() {
-			if len(key) != 8 {
-				return errors.New("invalid stored survey key")
+		rows, err := tx.Query("SELECT id,payload FROM survey_submissions WHERE id>? ORDER BY id", state.Range.LastSubmissionID)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var id uint64
+			var body []byte
+			if err := rows.Scan(&id, &body); err != nil {
+				return err
 			}
 			var record storedSurveyRecord
 			if err := json.Unmarshal(body, &record); err != nil {
 				return err
 			}
-			if err := state.add(binary.BigEndian.Uint64(key), record); err != nil {
+			if err := state.add(id, record); err != nil {
 				return err
 			}
+		}
+		if err := rows.Err(); err != nil {
+			return err
+		}
+		if err := rows.Close(); err != nil {
+			return err
 		}
 		if state.Range.ComputedAt.IsZero() || state.Range.LastSubmissionID != previousCutoff {
 			state.Range.ComputedAt = s.store.now().UTC()
@@ -231,7 +239,7 @@ func (s *Server) surveyStatistics() (surveySummary, error) {
 		if err != nil {
 			return err
 		}
-		if err := meta.Put(surveyCacheStateKey, encoded); err != nil {
+		if _, err := tx.Exec("INSERT INTO survey_statistics(id,payload) VALUES(1,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload", string(encoded)); err != nil {
 			return err
 		}
 		result = state.summary()

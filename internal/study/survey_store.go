@@ -1,15 +1,12 @@
 package study
 
 import (
-	"encoding/binary"
+	"database/sql"
 	"encoding/json"
+	"errors"
+	"math"
 	"time"
-
-	bolt "go.etcd.io/bbolt"
 )
-
-var surveyBucket = []byte("survey-submissions")
-var surveyCacheBucket = []byte("survey-statistics")
 
 type storedSurveyRecord struct {
 	SurveySubmission
@@ -17,32 +14,55 @@ type storedSurveyRecord struct {
 	LegacyIPQuality json.RawMessage `json:"legacyIPQuality,omitempty"`
 }
 
-func initSurvey(tx *bolt.Tx) error {
-	for _, name := range [][]byte{surveyBucket, surveyCacheBucket} {
-		if _, err := tx.CreateBucketIfNotExists(name); err != nil {
-			return err
-		}
+func surveyStatusMask(q SurveySubmission) int {
+	mask := 0
+	if q.degraded() {
+		mask |= 1
 	}
-	return migrateSurvey(tx)
+	if q.banned() {
+		mask |= 2
+	}
+	if q.limited() {
+		mask |= 4
+	}
+	return mask
+}
+
+func insertSurveyRecord(tx *sql.Tx, id uint64, body []byte) error {
+	if id > math.MaxInt64 {
+		return errors.New("survey ID exceeds SQLite integer range")
+	}
+	var record storedSurveyRecord
+	if err := json.Unmarshal(body, &record); err != nil {
+		return err
+	}
+	var submittedAt any
+	if record.SubmittedAt != nil {
+		submittedAt = record.SubmittedAt.UTC().Format("2006-01-02T15:04:05.000000000Z")
+	}
+	var err error
+	if id == 0 {
+		_, err = tx.Exec("INSERT INTO survey_submissions(submitted_at,status_mask,payload) VALUES(?,?,?)", submittedAt, surveyStatusMask(record.SurveySubmission), string(body))
+	} else {
+		_, err = tx.Exec("INSERT INTO survey_submissions(id,submitted_at,status_mask,payload) VALUES(?,?,?,?)", int64(id), submittedAt, surveyStatusMask(record.SurveySubmission), string(body))
+	}
+	return err
 }
 
 func (s *Store) putSurvey(submission SurveySubmission) error {
-	return s.db.Update(func(tx *bolt.Tx) error {
-		bucket := tx.Bucket(surveyBucket)
-		if bucket.Stats().KeyN >= 100000 {
+	submittedAt := s.now().UTC()
+	body, err := json.Marshal(storedSurveyRecord{SurveySubmission: submission, SubmittedAt: &submittedAt})
+	if err != nil {
+		return err
+	}
+	return s.db.Update(func(tx *sql.Tx) error {
+		var count int
+		if err := tx.QueryRow("SELECT COUNT(*) FROM survey_submissions").Scan(&count); err != nil {
+			return err
+		}
+		if count >= 100000 {
 			return ErrCapacity
 		}
-		id, err := bucket.NextSequence()
-		if err != nil {
-			return err
-		}
-		submittedAt := s.now().UTC()
-		body, err := json.Marshal(storedSurveyRecord{SurveySubmission: submission, SubmittedAt: &submittedAt})
-		if err != nil {
-			return err
-		}
-		var key [8]byte
-		binary.BigEndian.PutUint64(key[:], id)
-		return bucket.Put(key[:], body)
+		return insertSurveyRecord(tx, 0, body)
 	})
 }

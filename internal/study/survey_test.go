@@ -2,9 +2,7 @@ package study
 
 import (
 	"bytes"
-	"encoding/binary"
 	"encoding/json"
-	bolt "go.etcd.io/bbolt"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
@@ -116,34 +114,15 @@ func TestSurveyStatusMigrationAndRateLimiting(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = store.db.Update(func(tx *bolt.Tx) error {
-		bucket := tx.Bucket(surveyBucket)
-		for _, status := range []string{"正常", "降智", "封号", "降智并封号"} {
-			body, err := json.Marshal(map[string]any{"status": status, "answers": map[string][]string{"plans": {"Plus"}}})
-			if err != nil {
-				return err
-			}
-			id, err := bucket.NextSequence()
-			if err != nil {
-				return err
-			}
-			var key [8]byte
-			binary.BigEndian.PutUint64(key[:], id)
-			if err := bucket.Put(key[:], body); err != nil {
-				return err
-			}
+	records := map[uint64][]byte{}
+	for index, status := range []string{"正常", "降智", "封号", "降智并封号"} {
+		body, err := json.Marshal(map[string]any{"status": status, "answers": map[string][]string{"plans": {"Plus"}}})
+		if err != nil {
+			t.Fatal(err)
 		}
-		return tx.Bucket(surveyCacheBucket).Delete(surveyStorageVersionKey)
-	})
-	if err != nil {
-		store.Close()
-		t.Fatal(err)
+		records[uint64(index+1)] = body
 	}
-	if err := store.Close(); err != nil {
-		t.Fatal(err)
-	}
-	store, err = Open(path, 10)
-	if err != nil {
+	if _, err := store.ImportBbolt(createLegacySurveys(t, "", records, 4)); err != nil {
 		t.Fatal(err)
 	}
 	defer store.Close()

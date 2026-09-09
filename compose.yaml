@@ -5,7 +5,8 @@ services:
     ports:
       - "127.0.0.1:8080:8080"
     environment:
-      STUDY_DB: /data/study.db
+      STUDY_DB: /data/study.sqlite
+      STUDY_LEGACY_DB: /data/study.db
       STUDY_MAX_REPORTERS: "10000"
     volumes:
       - study-data:/data
