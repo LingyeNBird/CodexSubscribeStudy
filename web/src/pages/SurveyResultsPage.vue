@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from "vue";
 import SurveyFactorCard from "../components/survey/SurveyFactorCard.vue";
 import SurveyCorrelationPanel from "../components/survey/SurveyCorrelationPanel.vue";
+import UsagePattern from "../components/survey/UsagePattern.vue";
 import { surveyRequest, type SurveyStatistics } from "../data/surveyApi";
 
 const statistics = ref<SurveyStatistics | null>(null);
@@ -52,6 +53,7 @@ const metrics = computed(() => [
 const statuses = computed(() => statistics.value?.statuses ?? []);
 const percentage = (count: number) =>
   statistics.value?.total ? ((100 * count) / statistics.value.total).toFixed(1) : "0.0";
+const formatTime = (value: string) => new Date(value).toLocaleString("zh-CN", { hour12: false });
 </script>
 
 <template>
@@ -87,6 +89,20 @@ const percentage = (count: number) =>
         {{ error ? "重试" : "刷新统计" }}
       </button>
     </div>
+    <p v-if="statistics" class="results-caption">
+      统计范围：{{ statistics.total }} 份问卷<template v-if="statistics.total"
+        >，提交编号 {{ statistics.range.firstSubmissionId }}–{{
+          statistics.range.lastSubmissionId
+        }}</template
+      >。
+      <template v-if="statistics.range.firstSubmittedAt && statistics.range.lastSubmittedAt">
+        已知提交时间：{{ formatTime(statistics.range.firstSubmittedAt) }} 至
+        {{ formatTime(statistics.range.lastSubmittedAt) }}（本地时间）。
+      </template>
+      <template v-if="statistics.range.unknownTimeCount"
+        >{{ statistics.range.unknownTimeCount }} 份历史问卷的提交时间未知。</template
+      >
+    </p>
 
     <section class="result-metrics" aria-label="问卷统计概览">
       <article v-for="metric in metrics" :key="metric.label" :class="metric.tone">
@@ -172,6 +188,21 @@ const percentage = (count: number) =>
           :distribution="distribution"
         />
       </div>
+      <section v-if="statistics" class="result-panel">
+        <div class="result-panel-heading">
+          <div>
+            <h2>平时使用规律</h2>
+            <p>各小时使用时间占比的平均值。</p>
+          </div>
+          <span class="pill plain">{{ statistics.usagePattern.total }} 份有效回答</span>
+        </div>
+        <UsagePattern
+          v-if="statistics.usagePattern.total"
+          :model-value="statistics.usagePattern.levels"
+          readonly
+        />
+        <p v-else>暂无使用规律数据。</p>
+      </section>
     </section>
 
     <SurveyCorrelationPanel

@@ -51,15 +51,12 @@
       "其他"
     ],
     "network": [
-      "宽带",
-      "机房"
+      "家宽",
+      "机房",
+      "机场"
     ],
-    "quality": [
-      "优秀",
-      "良好",
-      "中",
-      "差"
-    ],
+    "ipStability": ["固定 IP", "IP 乱飞"],
+    "ipRisk": ["0–14", "15–24", "25–39", "40–49", "50–69", "70–100"],
     "exitCountry": [
       "菲律宾",
       "日本",
@@ -129,11 +126,7 @@
       "专业项目",
       "其他"
     ],
-    "eventTime": [
-      "只知道日期",
-      "精确到分钟",
-      "我不清楚具体时间"
-    ]
+    "limitedDiscovery": ["容量达到上限", "服务不可用", "周限额度明显骤降", "其他"]
   },
   "definitions": [
     {
@@ -179,21 +172,27 @@
     },
     {
       "key": "network",
-      "title": "反代出口网络",
-      "description": "出口为宽带还是机房网络。",
-      "eligibility": "仅含选择反代且回答此题的问卷。"
+      "title": "IP 网络类型",
+      "description": "反代出口或直登使用的网络类型。",
+      "eligibility": "仅含选择直登或反代且回答此题的问卷。"
     },
     {
-      "key": "quality",
-      "title": "反代 IP 质量",
-      "description": "填写者自评的质量等级，并非统一检测结果。",
-      "eligibility": "仅含选择反代且回答此题的问卷。"
+      "key": "ipStability",
+      "title": "IP 稳定性",
+      "description": "使用固定 IP 还是 IP 频繁变化。",
+      "eligibility": "仅含选择直登或反代且回答此题的问卷。"
+    },
+    {
+      "key": "ipRisk",
+      "title": "IP 风险程度",
+      "description": "填写者自评的风险分数，分数越高表示风险越高。",
+      "eligibility": "仅含选择直登或反代且回答此题的问卷。"
     },
     {
       "key": "exitCountry",
-      "title": "反代出口地区",
+      "title": "IP 所在地区",
       "description": "按填写的国家与地区分组。",
-      "eligibility": "仅含选择反代的有效回答；明确选择“不知道”单列，不等于漏答。"
+      "eligibility": "仅含选择直登或反代的有效回答；明确选择“不知道”单列，不等于漏答。"
     },
     {
       "key": "official",
@@ -222,7 +221,7 @@
     },
     {
       "key": "duration",
-      "title": "总使用时长",
+      "title": "账号存活时长",
       "description": "按天分组：小时÷24、星期×7、月×30、年×365；月年为统计换算约定。"
     },
     {
@@ -259,9 +258,11 @@
       "eligibility": "仅含报告降智并回答此题的问卷；其他异常视图仅统计与降智重叠的样本。"
     },
     {
-      "key": "eventTime",
-      "title": "事件时间记录",
-      "description": "降智视图对应降智时间，封号视图对应封号时间；仅比较记录精度，不推断事件原因。"
+      "key": "limitedDiscovery",
+      "title": "风控识别方式",
+      "description": "填写者依据哪些现象识别风控（限流）。",
+      "multiple": true,
+      "eligibility": "仅含报告风控（限流）并回答此题的问卷。"
     }
   ]
 }

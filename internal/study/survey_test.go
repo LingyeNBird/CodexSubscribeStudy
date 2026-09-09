@@ -63,9 +63,6 @@ func TestSurveyPersistenceAndRepeatedSubmission(t *testing.T) {
 	if stats.OutcomeAssociation.Phi == nil || *stats.OutcomeAssociation.Phi != 1 {
 		t.Fatal("overlap association")
 	}
-	if len(stats.Factors) != 22 || len(stats.Associations) != 19 {
-		t.Fatal("missing factors")
-	}
 	for _, g := range stats.Associations {
 		if g.ID == "proxy" {
 			if g.Total != 2 || g.Rows[2].Degraded.Phi != nil {
@@ -74,11 +71,6 @@ func TestSurveyPersistenceAndRepeatedSubmission(t *testing.T) {
 		}
 	}
 	for _, factor := range stats.Factors {
-		if factor.ID == "eventTime" {
-			if factor.Groups["degraded"].Rows[0].Count != 2 || factor.Groups["banned"].Rows[1].Count != 2 {
-				t.Fatal("event precision mixed between outcomes")
-			}
-		}
 		if factor.ID == "duration" && factor.Groups["degraded"].Rows[1].Count != 2 {
 			t.Fatal("duration normalization")
 		}
@@ -144,7 +136,7 @@ func TestSurveyStatusMigrationAndRateLimiting(t *testing.T) {
 				return err
 			}
 		}
-		return nil
+		return tx.Bucket(surveyCacheBucket).Delete(surveyStorageVersionKey)
 	})
 	if err != nil {
 		store.Close()
@@ -196,5 +188,47 @@ func TestSurveyStatusMigrationAndRateLimiting(t *testing.T) {
 		if group.ID == "plans" && (group.Rows[0].Limited.Selected.Events != 1 || group.Rows[0].Limited.Unselected.Events != 1) {
 			t.Fatal("incorrect rate-limited association")
 		}
+	}
+}
+
+func TestSurveyDirectIPAndStability(t *testing.T) {
+	server := NewServer(openTest(t, 10), fstest.MapFS{})
+	for _, body := range []string{
+		`{"status":["正常"],"answers":{"plans":["Plus"],"usage":["直登"],"network":["家宽"],"ipStability":["固定 IP"]},"details":{"exitCountry":"JP"},"ipRisk":0}`,
+		`{"status":["封号"],"answers":{"plans":["Plus"],"usage":["反代"],"network":["机场"],"ipStability":["IP 乱飞"]},"details":{"exitCountry":"unknown"},"ipRisk":90}`,
+		`{"status":["正常"],"answers":{"plans":["Plus"],"usage":["直登"]}}`,
+	} {
+		if w := surveyCall(server, "POST", "/api/survey/submissions", body, "192.0.2.1:80", ""); w.Code != 201 {
+			t.Fatal(w.Body.String())
+		}
+	}
+	for _, body := range []string{
+		`{"status":["正常"],"answers":{"plans":["Plus"],"ipStability":["固定 IP"]}}`,
+		`{"status":["正常"],"answers":{"plans":["Plus"],"usage":["直登"],"ipStability":["其他"]}}`,
+		`{"status":["正常"],"answers":{"plans":["Plus"],"usage":["直登"],"proxy":["CPA"]}}`,
+		`{"status":["正常"],"answers":{"plans":["Plus"]},"details":{"exitCountry":"JP"}}`,
+	} {
+		if w := surveyCall(server, "POST", "/api/survey/submissions", body, "192.0.2.1:80", ""); w.Code != 400 {
+			t.Fatal("inapplicable IP answer accepted")
+		}
+	}
+	stats, err := server.surveyStatistics()
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, group := range stats.Associations {
+		if group.ID == "ipStability" {
+			found = true
+			if group.Total != 2 || group.Rows[1].Banned.Selected.Events != 1 || group.Rows[1].Banned.Unselected.Events != 0 {
+				t.Fatal("wrong stability comparison population")
+			}
+		}
+		if group.ID == "ipRisk" && group.Total != 2 {
+			t.Fatal("direct IP omitted from risk statistics")
+		}
+	}
+	if !found {
+		t.Fatal("missing IP stability statistics")
 	}
 }

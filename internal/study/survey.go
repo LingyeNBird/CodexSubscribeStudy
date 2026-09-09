@@ -39,9 +39,11 @@ var surveyCatalog = func() surveyCatalogData {
 }()
 
 type SurveySubmission struct {
-	Status  []string            `json:"status"`
-	Answers map[string][]string `json:"answers"`
-	Details map[string]string   `json:"details"`
+	Status       []string            `json:"status"`
+	Answers      map[string][]string `json:"answers"`
+	Details      map[string]string   `json:"details"`
+	UsagePattern []*int              `json:"usagePattern,omitempty"`
+	IPRisk       *int                `json:"ipRisk,omitempty"`
 }
 
 func (q SurveySubmission) has(key, value string) bool { return slices.Contains(q.Answers[key], value) }
@@ -50,6 +52,7 @@ func (q SurveySubmission) banned() bool               { return slices.Contains(q
 func (q SurveySubmission) limited() bool              { return slices.Contains(q.Status, "风控（限流）") }
 
 func validateSurvey(q SurveySubmission) error {
+	hasConnection := q.has("usage", "直登") || q.has("usage", "反代")
 	invalid := errors.New("invalid questionnaire")
 	if len(q.Status) == 0 || len(q.Status) > 3 || len(q.Answers["plans"]) != 1 {
 		return invalid
@@ -61,12 +64,25 @@ func validateSurvey(q SurveySubmission) error {
 		}
 		seenStatuses[status] = true
 	}
-	for key, values := range q.Answers {
-		options, ok := surveyCatalog.Choices[key]
-		if !ok || key == "duration" || key == "people" || key == "concurrency" || key == "eventTime" || key == "country" || key == "exitCountry" || key == "thirdMode" {
+	if q.IPRisk != nil && (*q.IPRisk < 0 || *q.IPRisk > 100 || !hasConnection) {
+		return invalid
+	}
+	if q.UsagePattern != nil {
+		if len(q.UsagePattern) != 24 {
 			return invalid
 		}
-		multi := slices.Contains([]string{"models", "tools", "usage", "official", "discovery"}, key)
+		for _, value := range q.UsagePattern {
+			if value == nil || *value < 0 || *value > 24 {
+				return invalid
+			}
+		}
+	}
+	for key, values := range q.Answers {
+		options, ok := surveyCatalog.Choices[key]
+		if !ok || key == "duration" || key == "people" || key == "concurrency" || key == "country" || key == "exitCountry" || key == "thirdMode" || key == "ipRisk" {
+			return invalid
+		}
+		multi := slices.Contains([]string{"models", "tools", "usage", "official", "discovery", "limitedDiscovery"}, key)
 		if len(values) == 0 || len(values) > len(options) || (!multi && len(values) != 1) {
 			return invalid
 		}
@@ -80,10 +96,16 @@ func validateSurvey(q SurveySubmission) error {
 		if (key == "models" || key == "discovery") && !q.degraded() {
 			return invalid
 		}
+		if key == "limitedDiscovery" && !q.limited() {
+			return invalid
+		}
 		if key == "activation" && q.has("plans", "Free 免费") {
 			return invalid
 		}
-		if slices.Contains([]string{"proxy", "network", "quality"}, key) && !q.has("usage", "反代") {
+		if key == "proxy" && !q.has("usage", "反代") {
+			return invalid
+		}
+		if slices.Contains([]string{"network", "ipStability"}, key) && !hasConnection {
 			return invalid
 		}
 		if key == "desktopMode" && !q.has("official", "Codex Desktop") {
@@ -98,6 +120,10 @@ func validateSurvey(q SurveySubmission) error {
 			return invalid
 		}
 		switch key {
+		case "limitedDiscoveryOther":
+			if !q.limited() || !q.has("limitedDiscovery", "其他") {
+				return invalid
+			}
 		case "discoveryOther":
 			if !q.has("discovery", "其他") {
 				return invalid
@@ -111,7 +137,7 @@ func validateSurvey(q SurveySubmission) error {
 				return invalid
 			}
 		case "country", "exitCountry":
-			if key == "exitCountry" && !q.has("usage", "反代") {
+			if key == "exitCountry" && !hasConnection {
 				return invalid
 			}
 			if key == "exitCountry" && value == "unknown" {

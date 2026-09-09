@@ -13,6 +13,8 @@ import AiderIcon from "./components/icons/AiderIcon.vue";
 import CountrySelect from "./components/survey/CountrySelect.vue";
 import EventTimeField from "./components/survey/EventTimeField.vue";
 import ToolChoice from "./components/survey/ToolChoice.vue";
+import UsagePattern from "./components/survey/UsagePattern.vue";
+import IPRiskSlider from "./components/survey/IPRiskSlider.vue";
 import "./styles/survey-controls.css";
 const accountState = ref("");
 const selectedIssues = ref<string[]>([]);
@@ -25,6 +27,10 @@ const status = computed(() =>
 );
 const degraded = computed(() => status.value.includes("降智"));
 const banned = computed(() => status.value.includes("封号"));
+const limited = computed(() => status.value.includes("风控（限流）"));
+const limitedDiscovery = ref<string[]>([]);
+const limitedDiscoveryOther = ref("");
+const usagePattern = ref<number[]>();
 const discovery = ref<string[]>([]);
 const discoveryOther = ref("");
 const degradationModels = [
@@ -41,7 +47,13 @@ const activation = ref("");
 const usage = ref<string[]>([]);
 const proxy = ref("");
 const proxyOther = ref("");
-const exit = reactive({ network: "", quality: "", country: "", unknown: false });
+const exit = reactive<{
+  network: string;
+  stability: string;
+  risk: number | undefined;
+  country: string;
+  unknown: boolean;
+}>({ network: "", stability: "", risk: undefined, country: "", unknown: false });
 const official = reactive([
   { name: "Web 网页", selected: false, mode: "", connection: false },
   { name: "Codex Desktop", selected: false, mode: "", connection: true },
@@ -110,6 +122,7 @@ async function submitSurvey() {
     return;
   }
   const payload: SurveySubmission = { status: status.value, answers: {}, details: {} };
+  if (usagePattern.value) payload.usagePattern = [...usagePattern.value];
   const answer = (key: string, value: string | string[]) => {
     const values = Array.isArray(value) ? value : value ? [value] : [];
     if (values.length) payload.answers[key] = values;
@@ -126,12 +139,20 @@ async function submitSurvey() {
     answer("discovery", discovery.value);
     if (discovery.value.includes("其他")) detail("discoveryOther", discoveryOther.value);
   }
+  if (limited.value) {
+    answer("limitedDiscovery", limitedDiscovery.value);
+    if (limitedDiscovery.value.includes("其他"))
+      detail("limitedDiscoveryOther", limitedDiscoveryOther.value);
+  }
   answer("usage", usage.value);
   if (usage.value.includes("反代")) {
     answer("proxy", proxy.value);
     if (proxy.value === "其他") detail("proxyOther", proxyOther.value);
+  }
+  if (usage.value.length) {
     answer("network", exit.network);
-    answer("quality", exit.quality);
+    answer("ipStability", exit.stability);
+    if (exit.risk !== undefined) payload.ipRisk = exit.risk;
     detail("exitCountry", exit.unknown ? "unknown" : exit.country);
   }
   answer(
@@ -267,6 +288,34 @@ async function submitSurvey() {
               placeholder="请描述你观察到的现象"
           /></label>
         </fieldset>
+        <fieldset v-if="limited" class="follow-up">
+          <legend>如何识别出风控的？<span class="hint">可多选</span></legend>
+          <div class="choices">
+            <label
+              v-for="item in ['容量达到上限', '服务不可用', '周限额度明显骤降', '其他']"
+              :key="item"
+              class="choice"
+            >
+              <input
+                v-model="limitedDiscovery"
+                type="checkbox"
+                name="limited-discovery"
+                :value="item"
+              />{{ item }}
+            </label>
+          </div>
+          <p class="field-note">
+            因为使用 6 Astra 导致的周限额度下降，不要选择“周限额度明显骤降”。
+          </p>
+          <label v-if="limitedDiscovery.includes('其他')" class="text-field">
+            其他识别方式<input
+              v-model="limitedDiscoveryOther"
+              name="limited-discovery-other"
+              type="text"
+              placeholder="请描述你观察到的情况"
+            />
+          </label>
+        </fieldset>
         <fieldset>
           <legend>账号地区</legend>
           <CountrySelect id="account-country" v-model="region" shortcuts />
@@ -320,60 +369,62 @@ async function submitSurvey() {
             >
           </div>
         </fieldset>
-        <template v-if="usage.includes('反代')">
-          <fieldset class="follow-up">
-            <legend>反代工具</legend>
+        <fieldset v-if="usage.includes('反代')" class="follow-up">
+          <legend>反代工具</legend>
+          <div class="choices">
+            <label v-for="item in ['sub2API', 'CPA', '其他']" :key="item" class="choice"
+              ><input v-model="proxy" type="radio" name="proxy" :value="item" />{{ item }}</label
+            >
+          </div>
+          <label v-if="proxy === '其他'" class="text-field"
+            >其他反代工具<input v-model="proxyOther" type="text" placeholder="请输入工具名称"
+          /></label>
+        </fieldset>
+        <fieldset v-if="usage.length" class="follow-up">
+          <legend>反代出口 IP 或者直登 IP</legend>
+          <fieldset>
+            <legend class="sublegend">网络类型</legend>
             <div class="choices">
-              <label v-for="item in ['sub2API', 'CPA', '其他']" :key="item" class="choice"
-                ><input v-model="proxy" type="radio" name="proxy" :value="item" />{{ item }}</label
+              <label v-for="item in ['家宽', '机房', '机场']" :key="item" class="choice"
+                ><input v-model="exit.network" type="radio" name="exit-network" :value="item" />{{
+                  item
+                }}</label
               >
             </div>
-            <label v-if="proxy === '其他'" class="text-field"
-              >其他反代工具<input v-model="proxyOther" type="text" placeholder="请输入工具名称"
-            /></label>
           </fieldset>
-          <fieldset class="follow-up">
-            <legend>反代出口 IP</legend>
-            <fieldset>
-              <legend class="sublegend">网络类型</legend>
-              <div class="choices">
-                <label v-for="item in ['宽带', '机房']" :key="item" class="choice"
-                  ><input v-model="exit.network" type="radio" name="exit-network" :value="item" />{{
-                    item
-                  }}</label
-                >
-              </div>
-            </fieldset>
-            <fieldset>
-              <legend class="sublegend">IP 质量</legend>
-              <div class="choices">
-                <label v-for="item in ['优秀', '良好', '中', '差']" :key="item" class="choice"
-                  ><input v-model="exit.quality" type="radio" name="exit-quality" :value="item" />{{
-                    item
-                  }}</label
-                >
-              </div>
-            </fieldset>
-            <div class="field-row">
-              <CountrySelect
-                v-model="exit.country"
-                label="IP 所在国家或地区"
-                :disabled="exit.unknown"
-                shortcuts
-              /><button
-                class="unknown-button"
-                type="button"
-                :aria-pressed="exit.unknown"
-                @click="exit.unknown = !exit.unknown"
-              >
-                我不知道
-              </button>
+          <fieldset>
+            <legend class="sublegend">IP 是否固定</legend>
+            <div class="choices">
+              <label v-for="item in ['固定 IP', 'IP 乱飞']" :key="item" class="choice">
+                <input v-model="exit.stability" type="radio" name="ip-stability" :value="item" />{{
+                  item
+                }}
+              </label>
             </div>
-            <p class="field-note">
-              “我不知道”仅针对 IP 所在国家或地区；选中后忽略该项，取消后恢复填写。
-            </p>
           </fieldset>
-        </template>
+          <fieldset>
+            <legend class="sublegend">IP 风险程度</legend>
+            <IPRiskSlider v-model="exit.risk" />
+          </fieldset>
+          <div class="field-row">
+            <CountrySelect
+              v-model="exit.country"
+              label="IP 所在国家或地区"
+              :disabled="exit.unknown"
+              shortcuts
+            /><button
+              class="unknown-button"
+              type="button"
+              :aria-pressed="exit.unknown"
+              @click="exit.unknown = !exit.unknown"
+            >
+              我不知道
+            </button>
+          </div>
+          <p class="field-note">
+            “我不知道”仅针对 IP 所在国家或地区；选中后忽略该项，取消后恢复填写。
+          </p>
+        </fieldset>
         <fieldset>
           <legend>使用哪些官方工具？<span class="hint">可多选</span></legend>
           <div class="tool-list">
@@ -415,12 +466,16 @@ async function submitSurvey() {
         <div class="survey-section-title">
           <span class="mini-icon peach">03</span>
           <div>
-            <h2>使用时长与事件</h2>
+            <h2>账号时长与事件</h2>
             <p>时间可以只精确到天，不确定时无需猜测。</p>
           </div>
         </div>
         <fieldset>
-          <legend>总使用时长</legend>
+          <legend>你平时的使用规律</legend>
+          <UsagePattern v-model="usagePattern" />
+        </fieldset>
+        <fieldset>
+          <legend>账号存活时长</legend>
           <div class="field-row duration-row">
             <label class="text-field"
               >数值<input

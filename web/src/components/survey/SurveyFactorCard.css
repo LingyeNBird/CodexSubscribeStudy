@@ -47,9 +47,6 @@
 .outcome-switch button:nth-child(2)[aria-pressed="true"] {
   background: var(--peach);
 }
-.outcome-switch:not(:has(button:nth-child(3))) {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
 .outcome-switch button:nth-child(3)[aria-pressed="true"] {
   background: var(--sun);
 }

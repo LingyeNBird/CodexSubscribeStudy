@@ -31,11 +31,22 @@ export interface SurveyStatistics {
   factors: FactorDistribution[];
   associations: AssociationGroup[];
   outcomeAssociation: BinaryAssociation;
+  usagePattern: { total: number; levels: number[] };
+  range: {
+    firstSubmissionId: number;
+    lastSubmissionId: number;
+    firstSubmittedAt: string | null;
+    lastSubmittedAt: string | null;
+    unknownTimeCount: number;
+    computedAt: string;
+  };
 }
 export interface SurveySubmission {
   status: string[];
   answers: Record<string, string[]>;
   details: Record<string, string>;
+  usagePattern?: number[];
+  ipRisk?: number;
 }
 export async function surveyRequest<T>(path: string, submission?: SurveySubmission): Promise<T> {
   const response = await fetch(`/api/survey/${path}`, {

@@ -22,7 +22,6 @@ const percentage = (count: number) =>
         封号
       </button>
       <button
-        v-if="distribution.id !== 'eventTime'"
         type="button"
         :aria-pressed="outcome === 'limited'"
         @click="outcome = 'limited'"

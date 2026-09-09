@@ -41,8 +41,8 @@ log_evidence, gpt6_quota, information
 
 ## 账号情况问卷
 
-- `POST /api/survey/submissions`：JSON，请求上限 32 KiB；成功返回 HTTP 201 `{ "accepted": true }`。每次成功提交追加一份问卷，不去重或覆盖。
-- `GET /api/survey/statistics`：公开汇总，不返回逐份问卷或补充文本。响应禁用缓存，提交后的新请求立即可见。
+- `POST /api/survey/submissions`：JSON，请求上限 32 KiB；成功返回 HTTP 201 `{ "accepted": true }`。每次成功提交追加一份问卷，并记录服务器 UTC 提交时间，不接受客户端指定提交时间。
+- `GET /api/survey/statistics`：公开汇总，不返回逐份问卷或补充文本。请求时将新增问卷纳入统计，并返回对应的统计范围；HTTP 响应不缓存。
 
 提交结构：
 
@@ -56,21 +56,27 @@ log_evidence, gpt6_quota, information
 
 `status` 为非空字符串数组：正常必须单独选择；降智、封号、风控（限流）可以任意组合，不得重复。`answers.plans` 必填。其他问题允许未作答，未作答不进入对应问题分母。所有提交值经后端白名单及条件关系验证。
 
-`answers` 接受目录 `internal/study/survey_catalog.json` 中的 models、plans、tools、activation、usage、proxy、network、quality、official、desktopMode、ciMode、shared、warning、truncated、discovery；值为选项字符串数组，单选必须仅一项，多选不得重复。
+`answers` 接受目录 `internal/study/survey_catalog.json` 中的 models、plans、tools、activation、usage、proxy、network、ipStability、official、desktopMode、ciMode、shared、warning、truncated、discovery、limitedDiscovery；值为选项字符串数组，单选必须仅一项，多选不得重复。network 选项为家宽、机房、机场；ipStability 选项为固定 IP、IP 乱飞。网络类型、IP 稳定性和 IP 地区适用于直登或反代，反代工具仅适用于反代。limitedDiscovery 仅在选择风控（限流）时接受，选项为容量达到上限、服务不可用、周限额度明显骤降、其他。
 
 `details` 仅接受：
 
 - country、exitCountry：ISO alpha-2 地区码；出口可为 `unknown`。
-- duration、durationUnit：非负有限数值字符串和天/小时/星期/月/年，换算约定小时÷24、星期×7、月×30、年×365。
+- duration、durationUnit：账号存活时长，非负有限数值字符串和天/小时/星期/月/年，换算约定小时÷24、星期×7、月×30、年×365。
 - people：整数且至少2，只在分发为“是”时有效；concurrency：非负整数或 `unknown`。数值上限为1000000。
 - degradationTime、banTime：对应异常发生时的 `YYYY-MM-DD`、`YYYY-MM-DDTHH:mm` 或 `unknown`。不附加时区推断。
-- discoveryOther、proxyOther、thirdPartyOther：仅对应“其他”选项有效的补充文本。
+- discoveryOther、limitedDiscoveryOther、proxyOther、thirdPartyOther：仅对应“其他”选项有效的补充文本。
 - `toolMode:<工具名>`：已选第三方工具的直登（OAuth）或反代；Claude Code 不接受此项。
 
-补充值每项不超过2000字节。持续时间、人数、并发、地区、连接模式、事件记录精度的统计分组由服务端计算，不接受客户端直接上传分组结论。降智与封号时间分别进入各自分布。
+补充值每项不超过2000字节。账号时长、人数、并发、地区、连接模式的统计分组由服务端计算，不接受客户端直接上传分组结论。
 
-统计返回 total、degraded、banned、limited、normal、both、statuses、22项 factors、19项 associations、outcomeAssociation。各异常计数包含重叠问卷；both 为同时报告降智与封号的份数；statuses 按八种互斥状态组合返回 label、count、tone。factors 和 associations 分别提供 degraded、banned、limited 三类异常的分布和关联。事件时间仅统计问卷实际询问的降智与封号时间。
+可选 `usagePattern` 为24个整数，依次对应当地时间0点至23点，每项取值0至24，表示该小时选中的格数（24对应100%，12表示通常约有30分钟在使用）。未填写时省略，不计入使用规律分母。
 
-分布分母只含该异常状态且回答该题的问卷；关联对照在该题全部有效回答中计算，包括正常样本。仅异常状态展开的模型、发现方式、事件时间不参与因素相关性。φ 分母为0时返回 null；未进行显著性检验、多重比较校正或混杂调整。
+可选 `ipRisk` 为0至100的整数，在使用方式包含直登或反代时接受。0为最低风险，100为最高风险；未填写时省略。统计按0–14、15–24、25–39、40–49、50–69、70–100分组。
+
+统计返回 total、degraded、banned、limited、normal、both、statuses、factors、associations、outcomeAssociation、usagePattern 和 range。各异常计数包含重叠问卷；both 为同时报告降智与封号的份数；statuses 按八种互斥状态组合返回 label、count、tone。factors 和 associations 分别提供 degraded、banned、limited 三类异常的分布和关联。usagePattern 返回有效回答 total 和各小时平均格数 levels；百分比为平均格数÷24。
+
+`range` 包含 firstSubmissionId、lastSubmissionId（已纳入统计的提交编号范围）、firstSubmittedAt、lastSubmittedAt（已知提交时间的最小值和最大值）、unknownTimeCount（提交时间未知的历史问卷数）、computedAt（本次结果计算时间）。无问卷时编号为0、提交时间为null；时间未知不等于问卷未被统计。
+
+分布分母只含该异常状态且回答该题的问卷；关联对照在该题全部有效回答中计算，包括正常样本。仅异常状态展开的模型和识别方式不参与因素相关性。φ 分母为0时返回 null；未进行显著性检验、多重比较校正或混杂调整。
 
 问卷使用同一 bbolt 数据库及备份流程，最多保存100000份。
