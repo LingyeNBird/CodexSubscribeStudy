@@ -67,6 +67,26 @@
   color: var(--muted);
   margin: 5px 0 0;
 }
+.multiple-badge {
+  display: inline-block;
+  margin-right: 9px;
+  padding: 2px 7px;
+  border: 1px solid #71987e;
+  border-radius: 6px;
+  background: var(--mint);
+  color: var(--ink);
+  font-size: 0.7rem;
+  font-weight: 650;
+  line-height: 1.5;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.multiple-hint {
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.75;
+}
 .tool-list {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

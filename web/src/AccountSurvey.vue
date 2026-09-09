@@ -231,7 +231,7 @@ async function submitSurvey() {
           </div>
         </fieldset>
         <fieldset v-if="accountState === '存在异常'" class="follow-up">
-          <legend>出现了哪些情况？<span class="hint">可多选</span></legend>
+          <legend><span class="multiple-badge">多选</span>出现了哪些情况？</legend>
           <div class="choices">
             <label v-for="item in ['降智', '封号', '风控（限流）']" :key="item" class="choice">
               <input
@@ -244,7 +244,7 @@ async function submitSurvey() {
           </div>
         </fieldset>
         <fieldset v-if="degraded" class="follow-up">
-          <legend>降智的模型<span class="hint">可多选</span></legend>
+          <legend><span class="multiple-badge">多选</span>降智的模型</legend>
           <div class="choices">
             <label v-for="model in degradationModels" :key="model" class="choice">
               <input v-model="selectedDegradationModels" type="checkbox" :value="model" />
@@ -260,7 +260,7 @@ async function submitSurvey() {
           </div>
         </fieldset>
         <fieldset v-if="degraded" class="follow-up">
-          <legend>你是如何发现降智的？<span class="hint">可多选</span></legend>
+          <legend><span class="multiple-badge">多选</span>你是如何发现降智的？</legend>
           <div class="choices">
             <label
               v-for="item in ['画鹈鹕', 'juice值', '通过回答风格判断', '专业项目', '其他']"
@@ -277,7 +277,7 @@ async function submitSurvey() {
           /></label>
         </fieldset>
         <fieldset v-if="limited" class="follow-up">
-          <legend>如何识别出风控的？<span class="hint">可多选</span></legend>
+          <legend><span class="multiple-badge">多选</span>如何识别出风控的？</legend>
           <div class="choices">
             <label
               v-for="item in ['容量达到上限', '服务不可用', '周限额度明显骤降', '其他']"
@@ -350,10 +350,18 @@ async function submitSurvey() {
           </div>
         </div>
         <fieldset>
-          <legend>账号使用方式<span class="hint">可多选</span></legend>
+          <legend><span class="multiple-badge">多选</span>账号使用方式</legend>
+          <p id="usage-multiple-hint" class="multiple-hint">
+            如果同时使用直登和反代，请<strong>两项都选上</strong>。
+          </p>
           <div class="choices">
             <label v-for="item in ['直登', '反代']" :key="item" class="choice"
-              ><input v-model="usage" type="checkbox" :value="item" />{{ item }}</label
+              ><input
+                v-model="usage"
+                type="checkbox"
+                :value="item"
+                aria-describedby="usage-multiple-hint"
+              />{{ item }}</label
             >
           </div>
         </fieldset>
@@ -414,7 +422,7 @@ async function submitSurvey() {
           </p>
         </fieldset>
         <fieldset>
-          <legend>使用哪些官方工具？<span class="hint">可多选</span></legend>
+          <legend><span class="multiple-badge">多选</span>使用哪些官方工具？</legend>
           <div class="tool-list">
             <ToolChoice
               v-for="tool in official"
@@ -428,7 +436,7 @@ async function submitSurvey() {
           </div>
         </fieldset>
         <fieldset>
-          <legend>使用哪些第三方工具？<span class="hint">可多选</span></legend>
+          <legend><span class="multiple-badge">多选</span>使用哪些第三方工具？</legend>
           <div class="tool-list">
             <ToolChoice
               v-for="tool in thirdParty"
