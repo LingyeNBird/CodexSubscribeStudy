@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import type { FactorDistribution, SurveyOutcome } from "../../data/surveyApi";
+import type { SurveyOutcome } from "../../data/surveyApi";
+import type { FactorDistribution } from "../../data/surveyStatistics";
 const props = defineProps<{ distribution: FactorDistribution }>();
 const outcome = ref<SurveyOutcome>("degraded");
 const group = computed(() => props.distribution.groups[outcome.value]);
@@ -21,11 +22,7 @@ const percentage = (count: number) =>
       <button type="button" :aria-pressed="outcome === 'banned'" @click="outcome = 'banned'">
         封号
       </button>
-      <button
-        type="button"
-        :aria-pressed="outcome === 'limited'"
-        @click="outcome = 'limited'"
-      >
+      <button type="button" :aria-pressed="outcome === 'limited'" @click="outcome = 'limited'">
         风控（限流）
       </button>
     </div>

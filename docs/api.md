@@ -73,10 +73,17 @@ log_evidence, gpt6_quota, information
 
 可选 `ipRisk` 为0至100的整数，在使用方式包含直登或反代时接受。0为最低风险，100为最高风险；未填写时省略。统计按0–14、15–24、25–39、40–49、50–69、70–100分组。
 
-统计返回 total、degraded、banned、limited、normal、both、statuses、factors、associations、usagePattern 和 range。各异常计数包含重叠问卷；both 为同时报告降智与封号的份数；statuses 按八种互斥状态组合返回 label、count、tone。factors 和 associations 分别提供 degraded、banned、limited 三类异常的分布和关联。usagePattern 返回有效回答 total 和各小时平均格数 levels；百分比为平均格数÷24。
+统计接口返回 `version: 2`、`catalogDigest`、`statuses`、`factors`、`usagePattern` 和 `range`，只包含汇总计数及题目口径，不返回派生比例或相关系数。
+
+- `statuses`：长度为8的互斥状态计数数组。数组下标为状态掩码：降智=1、封号=2、风控=4；0为正常，3为降智且封号，5为降智且风控，6为封号且风控，7为三者都有。一份问卷只进入一个状态。
+- `factors`：按题目目录排序的数组，每项包含 `id`、`title`、`description`、`multiple`、`distributionScope`、`associationScope`、`comparable`、`applicable` 和 `options`。`applicable` 是该题有效回答的8格状态计数；`options` 每项包含 `label` 和同样的8格 `counts`。多选题的选项计数不能相加充当有效回答总数。
+- `comparable`：该题是否允许关联比较。模型、降智发现方式、风控识别方式为 false；前端只展示它们的样本分布。
+- `usagePattern`：包含有效回答 `total` 及24个小时的格数总和 `sums`，前端按 `sums[hour] / total` 计算平均值；无回答时不作除法。
 
 `range` 包含 firstSubmissionId、lastSubmissionId（已纳入统计的提交编号范围）、firstSubmittedAt、lastSubmittedAt（已知提交时间的最小值和最大值）、unknownTimeCount（提交时间未知的历史问卷数）、computedAt（本次结果计算时间）。无问卷时编号为0、提交时间为null；时间未知不等于问卷未被统计。
 
-分布分母只含该异常状态且回答该题的问卷；关联对照在该题全部有效回答中计算，包括正常样本。仅异常状态展开的模型和识别方式不参与因素相关性。φ 分母为0时返回 null；未进行显著性检验、多重比较校正或混杂调整。
+前端统一计算分布、比例和 φ。异常组合采用并集：状态下标与所选异常掩码按位与不为0时，累加该格一次。未选择某个因素选项的人群计数等于该题 `applicable` 减去该选项的 `counts`。分布分母只含满足异常组合且回答该题的问卷；关联对照在该题全部有效回答中计算，包括正常样本。φ 分母为0时前端生成 null；未进行显著性检验、多重比较校正或混杂调整。单因素汇总不支持任意跨因素联合筛选。
 
-问卷使用同一 bbolt 数据库及备份流程，最多保存100000份。
+问卷使用同一 bbolt 数据库及备份流程，最多保存100000份。原始问卷仍保存在 `survey-submissions`；本次统计升级不删除、重编号或改写该桶的数据。统计缓存版本2只持久化互斥计数、截止位置和时间范围，不再保存派生展示结果。同目录摘要下的版本1缓存保留原计数和截止位置，首次请求在事务中升级；只读取截止位置之后的新增问卷。没有新增问卷时不重扫历史；更新失败时整个事务回滚。计数规则或题目目录变更会使缓存失效并从保留的问卷重建。
+
+升级前应正常停止服务并备份整个数据库，然后同时部署新版服务和前端；提交接口及问卷存储格式不变。旧版统计响应不能可靠反推各选项的重叠计数，不能当作新版快照导入。回滚程序前再次备份当前数据库；旧程序不识别版本2缓存时可从保留的问卷重建，不应删除数据库，也不能用升级前备份覆盖升级后新增的问卷。

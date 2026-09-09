@@ -3,7 +3,7 @@
   scrollbar-gutter: stable;
 }
 .association-dialog {
-  width: min(920px, calc(100% - 32px));
+  width: min(600px, calc(100% - 32px));
   max-height: calc(100dvh - 48px);
   margin: auto;
   padding: 0;
@@ -60,19 +60,11 @@
   outline: 3px solid #427b62;
   outline-offset: 3px;
 }
-.option-comparisons {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 22px;
-}
 .outcome-detail {
   min-width: 0;
   border-top: 2px solid #d0d5c7;
   padding-top: 16px;
   font-variant-numeric: tabular-nums;
-}
-.outcome-detail.is-current {
-  border-top-color: var(--ink);
 }
 .outcome-detail header {
   display: flex;
@@ -141,10 +133,6 @@
   }
   .dialog-heading h2 {
     font-size: 1.3rem;
-  }
-  .option-comparisons {
-    grid-template-columns: 1fr;
-    gap: 22px;
   }
   .outcome-detail dl {
     margin-top: 12px;

@@ -2,6 +2,11 @@
 import { computed, onActivated, reactive, ref } from "vue";
 import { surveyRequest, type SurveySubmission } from "./data/surveyApi";
 import { toolIcons } from "./components/icons/toolIcons";
+import {
+  submittedBefore,
+  loadSubmissionMarker,
+  markSurveySubmitted,
+} from "./data/surveyParticipation";
 
 import CountrySelect from "./components/survey/CountrySelect.vue";
 import EventTimeField from "./components/survey/EventTimeField.vue";
@@ -28,7 +33,7 @@ const discovery = ref<string[]>([]);
 const discoveryOther = ref("");
 const degradationModels = [
   "GPT-6 Astra",
-  "GPT-5.6 Sora",
+  "GPT-5.6 Sol",
   "GPT-5.6 Terra",
   "GPT-5.6 Luna",
   "GPT-5.5",
@@ -87,17 +92,9 @@ const concurrency = ref<number | string>("");
 const concurrencyUnknown = ref(false);
 const warning = ref("");
 const truncated = ref("");
-const submittedBefore = ref(false);
 const submitting = ref(false);
 const submitError = ref("");
-const submittedStorageKey = "chatgpt-account-survey:submitted";
-onActivated(() => {
-  try {
-    submittedBefore.value = window.localStorage.getItem(submittedStorageKey) === "1";
-  } catch {
-    // Storage restrictions must not prevent filling or submitting the questionnaire.
-  }
-});
+onActivated(loadSubmissionMarker);
 async function submitSurvey() {
   if (submitting.value) return;
   submitError.value = "";
@@ -175,12 +172,7 @@ async function submitSurvey() {
   try {
     const result = await surveyRequest<{ accepted: boolean }>("submissions", payload);
     if (!result.accepted) throw new Error("提交未完成，请稍后重试。");
-    submittedBefore.value = true;
-    try {
-      window.localStorage.setItem(submittedStorageKey, "1");
-    } catch {
-      // The submission succeeded even when browser storage is unavailable.
-    }
+    markSurveySubmitted();
     window.location.hash = "/studies/chatgpt-account-survey/results";
   } catch (error) {
     submitError.value = error instanceof Error ? error.message : "提交失败，请稍后重试。";

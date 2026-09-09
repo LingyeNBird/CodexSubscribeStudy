@@ -1,25 +1,24 @@
 <script setup lang="ts">
-import { computed, type Component } from "vue";
-import type { AssociationGroup, SurveyOutcome } from "../../data/surveyApi";
+import type { Component } from "vue";
+import type { AssociationGroup } from "../../data/surveyStatistics";
 import { tone, direction, coefficient, percent } from "../../data/surveyAssociation";
-const props = defineProps<{
+defineProps<{
   row: AssociationGroup["rows"][number];
-  outcome: SurveyOutcome;
+  outcomeLabel: string;
   layout: string;
   icon?: Component;
 }>();
 const emit = defineEmits<{ inspect: [event: MouseEvent] }>();
-const current = computed(() => props.row[props.outcome]);
 </script>
 
 <template>
   <button
     type="button"
     aria-haspopup="dialog"
-    :aria-label="`查看${row.label}的异常比较`"
+    :aria-label="`查看${row.label}的${outcomeLabel}比较`"
     @click="emit('inspect', $event)"
     class="association-card"
-    :class="[`tone-${tone(current.phi)}`, `layout-${layout}`]"
+    :class="[`tone-${tone(row.association.phi)}`, `layout-${layout}`]"
     :data-option="row.label"
   >
     <span class="option-summary">
@@ -31,18 +30,29 @@ const current = computed(() => props.row[props.outcome]);
         <strong class="option-label">{{ row.label }}</strong>
       </span>
       <span class="option-signal"
-        ><span class="direction">{{ direction(current.phi) }}</span
-        ><span class="phi">φ {{ coefficient(current.phi) }}</span></span
+        ><span class="outcome-label">{{ outcomeLabel }}</span
+        ><span class="direction">{{ direction(row.association.phi) }}</span
+        ><span class="phi">φ {{ coefficient(row.association.phi) }}</span></span
       >
-      <span class="option-rates"
-        ><span
-          ><span class="rate-label">选择该项</span><strong>{{ percent(current.selected) }}</strong
-          ><small>{{ current.selected.events }}/{{ current.selected.total }} 份</small></span
-        ><span
-          ><span class="rate-label">未选该项</span><strong>{{ percent(current.unselected) }}</strong
-          ><small>{{ current.unselected.events }}/{{ current.unselected.total }} 份</small></span
-        ></span
-      >
+      <span class="option-rates">
+        <span
+          ><span class="rate-label">选择该项</span
+          ><strong>{{ percent(row.association.selected) }}</strong
+          ><small
+            >{{ row.association.selected.events }}/{{ row.association.selected.total }} 份</small
+          ></span
+        >
+        <span
+          ><span class="rate-label">未选该项</span
+          ><strong>{{ percent(row.association.unselected) }}</strong
+          ><small
+            >{{ row.association.unselected.events }}/{{
+              row.association.unselected.total
+            }}
+            份</small
+          ></span
+        >
+      </span>
     </span>
   </button>
 </template>

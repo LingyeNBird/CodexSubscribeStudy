@@ -48,34 +48,29 @@ func TestSurveyUsagePatternAndLimitedDiscovery(t *testing.T) {
 	send(payload(make([]int, 24)), 201)
 	send(map[string]any{"status": []string{"正常"}, "answers": map[string][]string{"plans": {"Free 免费"}}}, 201)
 	response := surveyCall(server, "GET", "/api/survey/statistics", "", "192.0.2.1:80", "")
-	var stats surveyStatistics
+	var stats surveySummary
 	if err := json.Unmarshal(response.Body.Bytes(), &stats); err != nil {
 		t.Fatal(err)
 	}
-	if stats.Total != 3 || stats.UsagePattern.Total != 2 {
+	if testSurveyCount(stats.Statuses) != 3 || stats.UsagePattern.Total != 2 {
 		t.Fatal("missing answers treated as zero")
 	}
-	for hour, mean := range stats.UsagePattern.Levels {
-		if mean != float64(hour+1)/2 {
-			t.Fatalf("hour %d mean %f", hour, mean)
+	for hour, sum := range stats.UsagePattern.Sums {
+		if sum != hour+1 {
+			t.Fatalf("hour %d sum %d", hour, sum)
 		}
 	}
 	found := false
 	for _, factor := range stats.Factors {
 		if factor.ID == "limitedDiscovery" {
 			found = true
-			if factor.Groups["limited"].Total != 2 || factor.Groups["limited"].Rows[0].Count != 2 || factor.Groups["limited"].Rows[3].Count != 2 {
+			if factor.Applicable[4] != 2 || factor.Options[0].Counts[4] != 2 || factor.Options[3].Counts[4] != 2 || factor.Comparable {
 				t.Fatal("incorrect limited discovery distribution")
 			}
 		}
 	}
 	if !found {
 		t.Fatal("missing limited discovery distribution")
-	}
-	for _, group := range stats.Associations {
-		if group.ID == "limitedDiscovery" {
-			t.Fatal("outcome-gated question produced spurious association")
-		}
 	}
 	if strings.Contains(response.Body.String(), "private observation") {
 		t.Fatal("free text leaked")

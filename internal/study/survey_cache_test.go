@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -15,6 +16,14 @@ import (
 
 	bolt "go.etcd.io/bbolt"
 )
+
+func testSurveyCount(counts [8]int) int {
+	total := 0
+	for _, count := range counts {
+		total += count
+	}
+	return total
+}
 
 func cacheQuestion(index int) SurveySubmission {
 	states := [][]string{{"正常"}, {"降智"}, {"封号"}, {"降智", "封号"}, {"风控（限流）"}, {"降智", "风控（限流）"}, {"封号", "风控（限流）"}, {"降智", "封号", "风控（限流）"}}
@@ -67,64 +76,44 @@ func TestSurveyIncrementalMatchesRawEvidence(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if result.Total != len(records) || result.Range.LastSubmissionID != uint64(len(records)) {
+		if testSurveyCount(result.Statuses) != len(records) || result.Range.LastSubmissionID != uint64(len(records)) {
 			t.Fatal("incremental total or cutoff")
 		}
 		for _, factor := range result.Factors {
-			for _, outcome := range []string{"degraded", "banned", "limited"} {
-				expected := 0
-				for _, q := range records {
-					applies := q.degraded()
-					if outcome == "banned" {
-						applies = q.banned()
-					}
-					if outcome == "limited" {
-						applies = q.limited()
-					}
-					if applies && len(q.normalized()[factor.ID]) > 0 {
-						expected++
+			var expectedApplicable [8]int
+			expectedOptions := make(map[string][8]int)
+			for _, q := range records {
+				mask := 0
+				for _, status := range q.Status {
+					switch status {
+					case "降智":
+						mask |= 1
+					case "封号":
+						mask |= 2
+					case "风控（限流）":
+						mask |= 4
 					}
 				}
-				if factor.Groups[outcome].Total != expected {
-					t.Fatalf("%s %s denominator", factor.ID, outcome)
+				values := q.normalized()[factor.ID]
+				if len(values) == 0 {
+					continue
+				}
+				expectedApplicable[mask]++
+				for index, value := range values {
+					if slices.Contains(values[:index], value) {
+						continue
+					}
+					counts := expectedOptions[value]
+					counts[mask]++
+					expectedOptions[value] = counts
 				}
 			}
-		}
-		for _, group := range result.Associations {
-			for _, row := range group.Rows {
-				for i, actual := range []surveyAssociation{row.Degraded, row.Banned, row.Limited} {
-					table := [4]int{}
-					for _, q := range records {
-						values := q.normalized()[group.ID]
-						if len(values) == 0 {
-							continue
-						}
-						selected := false
-						for _, value := range values {
-							if value == row.Label {
-								selected = true
-							}
-						}
-						event := q.degraded()
-						if i == 1 {
-							event = q.banned()
-						}
-						if i == 2 {
-							event = q.limited()
-						}
-						slot := 0
-						if !selected {
-							slot = 2
-						}
-						if !event {
-							slot++
-						}
-						table[slot]++
-					}
-					expected := association(table[0], table[1], table[2], table[3])
-					if !reflect.DeepEqual(actual, expected) {
-						t.Fatalf("%s %s outcome %d: %#v != %#v", group.ID, row.Label, i, actual, expected)
-					}
+			if factor.Applicable != expectedApplicable {
+				t.Fatalf("%s applicability: %v != %v", factor.ID, factor.Applicable, expectedApplicable)
+			}
+			for _, option := range factor.Options {
+				if option.Counts != expectedOptions[option.Label] {
+					t.Fatalf("%s %s counts: %v != %v", factor.ID, option.Label, option.Counts, expectedOptions[option.Label])
 				}
 			}
 		}
@@ -142,8 +131,8 @@ func TestSurveyIncrementalMatchesRawEvidence(t *testing.T) {
 			t.Fatal("usage denominator")
 		}
 		for hour, sum := range sums {
-			if result.UsagePattern.Levels[hour] != float64(sum)/float64(n) {
-				t.Fatal("averages were added instead of sums")
+			if result.UsagePattern.Sums[hour] != sum {
+				t.Fatal("usage sums lost")
 			}
 		}
 	}
@@ -165,6 +154,19 @@ func TestSurveyCacheSurvivesRestartAndSkipsOldRecords(t *testing.T) {
 	}
 	// A cached historical record is deliberately unreadable: only the persisted counts may be used.
 	if err := store.db.Update(func(tx *bolt.Tx) error {
+		meta := tx.Bucket(surveyCacheBucket)
+		state, valid := decodeSurveyAggregate(meta.Get(surveyCacheStateKey))
+		if !valid {
+			return fmt.Errorf("missing cache")
+		}
+		state.Version = 1
+		legacy, err := json.Marshal(state)
+		if err != nil {
+			return err
+		}
+		if err := meta.Put(surveyCacheStateKey, legacy); err != nil {
+			return err
+		}
 		var key [8]byte
 		binary.BigEndian.PutUint64(key[:], 1)
 		return tx.Bucket(surveyBucket).Put(key[:], []byte("unreadable historical record"))
@@ -194,7 +196,7 @@ func TestSurveyCacheSurvivesRestartAndSkipsOldRecords(t *testing.T) {
 	if err != nil {
 		t.Fatal("incremental refresh rescanned history", err)
 	}
-	if delta.Total != 2 || delta.Normal != 1 || delta.Both != 1 || delta.Range.LastSubmissionID != 2 {
+	if testSurveyCount(delta.Statuses) != 2 || delta.Statuses[0] != 1 || delta.Statuses[7] != 1 || delta.Range.LastSubmissionID != 2 {
 		t.Fatal("lost persistent base counts")
 	}
 }
@@ -206,7 +208,7 @@ func TestSurveyCacheRefreshIsAtomicAndConcurrent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if first.Total != 0 || first.Range.LastSubmissionID != 0 || first.Range.FirstSubmittedAt != nil {
+	if testSurveyCount(first.Statuses) != 0 || first.Range.LastSubmissionID != 0 || first.Range.FirstSubmittedAt != nil {
 		t.Fatal("empty range")
 	}
 	if err := store.putSurvey(cacheQuestion(1)); err != nil {
@@ -229,7 +231,7 @@ func TestSurveyCacheRefreshIsAtomicAndConcurrent(t *testing.T) {
 	}
 	if err := store.db.View(func(tx *bolt.Tx) error {
 		state, valid := decodeSurveyAggregate(tx.Bucket(surveyCacheBucket).Get(surveyCacheStateKey))
-		if !valid || state.Result.Total != 0 || state.Range.LastSubmissionID != 0 {
+		if !valid || testSurveyCount(state.Counts.Statuses) != 0 || state.Range.LastSubmissionID != 0 {
 			return fmt.Errorf("failed refresh advanced progress")
 		}
 		return nil
@@ -262,7 +264,7 @@ func TestSurveyCacheRefreshIsAtomicAndConcurrent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Total != 22 || result.Range.LastSubmissionID != 22 {
+	if testSurveyCount(result.Statuses) != 22 || result.Range.LastSubmissionID != 22 {
 		t.Fatal("concurrent refresh lost or duplicated records")
 	}
 }
@@ -328,11 +330,11 @@ func TestSurveyServerTimeAndLegacyRiskMigration(t *testing.T) {
 	if stats.Range.UnknownTimeCount != 1 || stats.Range.FirstSubmittedAt == nil || !stats.Range.FirstSubmittedAt.Equal(now) || !stats.Range.LastSubmittedAt.Equal(now) {
 		t.Fatal("server time / legacy unknown time")
 	}
-	for _, group := range stats.Associations {
-		if group.ID == "ipRisk" && group.Total != 2 {
+	for _, group := range stats.Factors {
+		if group.ID == "ipRisk" && testSurveyCount(group.Applicable) != 2 {
 			t.Fatal("legacy rating fabricated a numeric score")
 		}
-		if group.ID == "network" && (group.Rows[0].Degraded.Selected.Total != 1 || group.Rows[2].Degraded.Selected.Total != 2) {
+		if group.ID == "network" && (testSurveyCount(group.Options[0].Counts) != 1 || testSurveyCount(group.Options[2].Counts) != 2) {
 			t.Fatal("network migration")
 		}
 	}
@@ -389,7 +391,7 @@ func TestSurveyCacheInvalidationRebuildsEvidence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if stats.Total != 1 || stats.Normal != 0 || stats.Both != 1 || stats.Limited != 1 {
+	if stats.Statuses != [8]int{0, 0, 0, 0, 0, 0, 0, 1} {
 		t.Fatal("stale cached counts reused after invalidation")
 	}
 }

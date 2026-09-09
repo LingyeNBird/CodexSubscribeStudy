@@ -1,11 +1,22 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref } from "vue";
 import SurveyFactorCard from "../components/survey/SurveyFactorCard.vue";
 import SurveyCorrelationPanel from "../components/survey/SurveyCorrelationPanel.vue";
 import UsagePattern from "../components/survey/UsagePattern.vue";
-import { surveyRequest, type SurveyStatistics } from "../data/surveyApi";
+import { surveyRequest, type SurveySummary } from "../data/surveyApi";
+import { calculateSurveyStatistics } from "../data/surveyStatistics";
+import { loadSubmissionMarker, submittedBefore } from "../data/surveyParticipation";
 
-const statistics = ref<SurveyStatistics | null>(null);
+const SurveyShareDialog = defineAsyncComponent(
+  () => import("../components/survey/SurveyShareDialog.vue"),
+);
+const shareOpen = ref(false);
+const shareOutcomeMask = ref(1);
+
+const summary = ref<SurveySummary | null>(null);
+const statistics = computed(() =>
+  summary.value ? calculateSurveyStatistics(summary.value) : null,
+);
 const loading = ref(false);
 const error = ref("");
 const analysisView = ref<"distribution" | "correlation">("correlation");
@@ -14,15 +25,22 @@ async function loadStatistics() {
   loading.value = true;
   error.value = "";
   try {
-    statistics.value = await surveyRequest<SurveyStatistics>("statistics");
+    const result = await surveyRequest<SurveySummary>("statistics");
+    if (result.version !== 2) throw new Error("统计数据格式不匹配，请更新服务后刷新页面。");
+    summary.value = result;
   } catch (cause) {
-    statistics.value = null;
+    summary.value = null;
     error.value = cause instanceof Error ? cause.message : "统计加载失败，请重试。";
   } finally {
     loading.value = false;
   }
 }
-onMounted(loadStatistics);
+onMounted(() => {
+  loadSubmissionMarker();
+  window.addEventListener("storage", loadSubmissionMarker);
+  void loadStatistics();
+});
+onBeforeUnmount(() => window.removeEventListener("storage", loadSubmissionMarker));
 const metrics = computed(() => [
   {
     label: "问卷样本",
@@ -65,7 +83,23 @@ const formatTime = (value: string) => new Date(value).toLocaleString("zh-CN", { 
         <h1>ChatGPT 套餐<br />降智封号统计</h1>
         <p>看看不同账号情况、模型与使用方式，在样本中如何分布。</p>
       </div>
-      <a class="button primary" href="#/studies/chatgpt-account-survey">填写问卷 ↗</a>
+      <a
+        class="participation-card"
+        :class="{ 'is-submitted': submittedBefore }"
+        href="#/studies/chatgpt-account-survey"
+      >
+        <template v-if="submittedBefore">
+          <span>您已填写了问卷，</span>
+          <strong>非常感谢您的填写。</strong>
+          <span>如果还有其他账号的情况，</span>
+          <span>可以点此继续填写 <b aria-hidden="true">↗</b></span>
+        </template>
+        <template v-else>
+          <span>你还未参与调查统计，</span>
+          <strong>可以点此参与问卷吗，</strong>
+          <span>求求你了 <b aria-hidden="true">↗</b></span>
+        </template>
+      </a>
     </header>
     <nav class="research-tabs" aria-label="研究二页面">
       <a href="#/studies/chatgpt-account-survey">调查问卷</a>
@@ -169,11 +203,21 @@ const formatTime = (value: string) => new Date(value).toLocaleString("zh-CN", { 
       >
         异常样本分布
       </button>
+      <button
+        class="share-button"
+        type="button"
+        :disabled="!summary"
+        aria-haspopup="dialog"
+        @click="shareOpen = true"
+      >
+        分享统计 <span aria-hidden="true">↗</span>
+      </button>
     </div>
     <SurveyCorrelationPanel
-      v-if="statistics"
+      v-if="summary"
       v-show="analysisView === 'correlation'"
-      :associations="statistics.associations"
+      :factors="summary.factors"
+      @outcome-change="shareOutcomeMask = $event"
     />
     <section
       v-show="analysisView === 'distribution'"
@@ -231,6 +275,12 @@ const formatTime = (value: string) => new Date(value).toLocaleString("zh-CN", { 
       <p>不填写问卷，也可以查看统计结果。</p>
       <a class="button" href="#/studies/chatgpt-account-survey">返回调查问卷 →</a>
     </div>
+    <SurveyShareDialog
+      v-if="shareOpen && summary"
+      :summary="summary"
+      :outcome-mask="shareOutcomeMask"
+      @close="shareOpen = false"
+    />
   </div>
 </template>
 

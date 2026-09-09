@@ -40,6 +40,10 @@
   border-radius: 12px;
 }
 .outcome-switch button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   border: 1px solid transparent;
   background: transparent;
   border-radius: 8px;
@@ -47,6 +51,26 @@
   font-size: 0.85rem;
   font-weight: 650;
   cursor: pointer;
+}
+.outcome-check {
+  display: inline-grid;
+  place-items: center;
+  width: 13px;
+  height: 13px;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  font-size: 0.65rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.outcome-picker {
+  display: grid;
+  gap: 4px;
+}
+.outcome-fallback {
+  text-align: center;
+  font-size: 0.7rem;
+  color: var(--muted);
 }
 .outcome-switch button[aria-pressed="true"] {
   background: var(--ink);

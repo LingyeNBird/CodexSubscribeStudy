@@ -1,36 +1,22 @@
-import type { BinaryAssociation } from "./surveyAssociation";
 export type SurveyOutcome = "degraded" | "banned" | "limited";
-export interface FactorDistribution {
+export type StatusCounts = [number, number, number, number, number, number, number, number];
+export interface SurveyFactorSummary {
   id: string;
   title: string;
   description: string;
   multiple: boolean;
-  eligibility: string;
-  groups: Record<SurveyOutcome, { total: number; rows: { label: string; count: number }[] }>;
+  distributionScope: string;
+  associationScope: string;
+  comparable: boolean;
+  applicable: StatusCounts;
+  options: { label: string; counts: StatusCounts }[];
 }
-export interface AssociationGroup {
-  id: string;
-  title: string;
-  scope: string;
-  total: number;
-  rows: {
-    label: string;
-    degraded: BinaryAssociation;
-    banned: BinaryAssociation;
-    limited: BinaryAssociation;
-  }[];
-}
-export interface SurveyStatistics {
-  total: number;
-  degraded: number;
-  banned: number;
-  limited: number;
-  statuses: { label: string; count: number; tone: string }[];
-  normal: number;
-  both: number;
-  factors: FactorDistribution[];
-  associations: AssociationGroup[];
-  usagePattern: { total: number; levels: number[] };
+export interface SurveySummary {
+  version: 2;
+  catalogDigest: string;
+  statuses: StatusCounts;
+  factors: SurveyFactorSummary[];
+  usagePattern: { total: number; sums: number[] };
   range: {
     firstSubmissionId: number;
     lastSubmissionId: number;

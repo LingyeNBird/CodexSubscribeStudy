@@ -163,3 +163,9 @@
     padding-left: 8px;
   }
 }
+.outcome-label {
+  flex-basis: 100%;
+  font-size: 0.7rem;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}

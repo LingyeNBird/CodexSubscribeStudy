@@ -11,8 +11,8 @@ import (
 	bolt "go.etcd.io/bbolt"
 )
 
-// Bump when normalization or counting changes; catalog changes invalidate by digest.
-const surveyCacheVersion = 1
+// Version 2 drops derived results; version 1 has identical counts and is upgraded in place.
+const surveyCacheVersion = 2
 
 var surveyCacheStateKey = []byte("aggregate")
 var surveyCatalogDigest = func() string {
@@ -36,7 +36,6 @@ type surveyCachedAggregate struct {
 	CatalogDigest string                `json:"catalogDigest"`
 	Counts        surveyAccumulator     `json:"counts"`
 	Range         surveyStatisticsRange `json:"range"`
-	Result        surveyStatistics      `json:"result"`
 }
 
 func newSurveyAggregate() surveyCachedAggregate {
@@ -53,7 +52,10 @@ func newSurveyAggregate() surveyCachedAggregate {
 
 func decodeSurveyAggregate(raw []byte) (surveyCachedAggregate, bool) {
 	var state surveyCachedAggregate
-	if len(raw) == 0 || json.Unmarshal(raw, &state) != nil || state.Version != surveyCacheVersion || state.CatalogDigest != surveyCatalogDigest {
+	if len(raw) == 0 || json.Unmarshal(raw, &state) != nil || state.CatalogDigest != surveyCatalogDigest {
+		return state, false
+	}
+	if state.Version != surveyCacheVersion && !(surveyCacheVersion == 2 && state.Version == 1) {
 		return state, false
 	}
 	for _, definition := range surveyCatalog.Definitions {
@@ -141,87 +143,38 @@ func (state *surveyCachedAggregate) add(id uint64, record storedSurveyRecord) er
 	return nil
 }
 
-func outcomeCount(counts [8]int, bit int) int {
-	total := 0
-	for mask, count := range counts {
-		if mask&bit != 0 {
-			total += count
-		}
-	}
-	return total
-}
-func totalCount(counts [8]int) int {
-	total := 0
-	for _, count := range counts {
-		total += count
-	}
-	return total
-}
-func countedAssociation(selected, applicable [8]int, bit int) surveyAssociation {
-	a := outcomeCount(selected, bit)
-	b := totalCount(selected) - a
-	c := outcomeCount(applicable, bit) - a
-	d := totalCount(applicable) - a - b - c
-	return association(a, b, c, d)
-}
-
-func (state *surveyCachedAggregate) statistics() surveyStatistics {
-	counts := &state.Counts
-	result := surveyStatistics{
-		Total: totalCount(counts.Statuses), Normal: counts.Statuses[0],
-		Degraded: outcomeCount(counts.Statuses, 1), Banned: outcomeCount(counts.Statuses, 2), Limited: outcomeCount(counts.Statuses, 4),
-		Both:    counts.Statuses[3] + counts.Statuses[7],
-		Factors: make([]surveyFactor, 0, len(surveyCatalog.Definitions)), Associations: []surveyAssociationGroup{}, Range: state.Range,
-	}
-	result.Statuses = []surveyStatusCount{
-		{Label: "正常", Tone: "mint"}, {Label: "降智", Tone: "violet"},
-		{Label: "封号", Tone: "peach"}, {Label: "降智、封号", Tone: "peach"},
-		{Label: "风控（限流）", Tone: "sun"}, {Label: "降智、风控（限流）", Tone: "sun"},
-		{Label: "封号、风控（限流）", Tone: "sun"}, {Label: "降智、封号、风控（限流）", Tone: "sun"},
-	}
-	for index, count := range counts.Statuses {
-		result.Statuses[index].Count = count
-	}
-	result.UsagePattern.Total = counts.UsageCount
-	if counts.UsageCount > 0 {
-		for hour, sum := range counts.UsageSums {
-			result.UsagePattern.Levels[hour] = float64(sum) / float64(counts.UsageCount)
-		}
+func (state *surveyCachedAggregate) summary() surveySummary {
+	result := surveySummary{
+		Version: surveySummaryVersion, CatalogDigest: state.CatalogDigest,
+		Statuses: state.Counts.Statuses, Range: state.Range,
+		UsagePattern: surveyUsageSummary{Total: state.Counts.UsageCount, Sums: state.Counts.UsageSums},
+		Factors:      make([]surveyFactorSummary, 0, len(surveyCatalog.Definitions)),
 	}
 	for _, definition := range surveyCatalog.Definitions {
-		key := definition.Key
-		factorCounts := counts.Factors[key]
-		factor := surveyFactor{ID: key, Title: definition.Title, Description: definition.Description, Multiple: definition.Multiple, Eligibility: definition.Eligibility, Groups: make(map[string]surveyGroup, 3)}
-		if factor.Eligibility == "" {
-			factor.Eligibility = "分母为所选异常状态中回答此题的问卷；漏答不计入。"
+		counts := state.Counts.Factors[definition.Key]
+		factor := surveyFactorSummary{
+			ID: definition.Key, Title: definition.Title, Description: definition.Description,
+			Multiple: definition.Multiple, Applicable: counts.Applicable,
+			DistributionScope: definition.Eligibility, AssociationScope: definition.Eligibility,
+			Comparable: !slices.Contains([]string{"models", "discovery", "limitedDiscovery"}, definition.Key),
+			Options:    make([]surveyOptionSummary, 0, len(surveyCatalog.Choices[definition.Key])),
 		}
-		for index, outcome := range []string{"degraded", "banned", "limited"} {
-			bit := 1 << index
-			group := surveyGroup{Total: outcomeCount(factorCounts.Applicable, bit), Rows: make([]surveyCount, 0, len(surveyCatalog.Choices[key]))}
-			for _, label := range surveyCatalog.Choices[key] {
-				group.Rows = append(group.Rows, surveyCount{Label: label, Count: outcomeCount(factorCounts.Options[label], bit)})
-			}
-			factor.Groups[outcome] = group
+		if factor.DistributionScope == "" {
+			factor.DistributionScope = "分母为所选异常状态中回答此题的问卷；漏答不计入。"
+		}
+		if factor.AssociationScope == "" {
+			factor.AssociationScope = "所有回答此题的问卷。"
+		}
+		for _, label := range surveyCatalog.Choices[definition.Key] {
+			factor.Options = append(factor.Options, surveyOptionSummary{Label: label, Counts: counts.Options[label]})
 		}
 		result.Factors = append(result.Factors, factor)
-		if slices.Contains([]string{"models", "discovery", "limitedDiscovery"}, key) {
-			continue
-		}
-		group := surveyAssociationGroup{ID: key, Title: definition.Title, Scope: definition.Eligibility, Total: totalCount(factorCounts.Applicable), Rows: make([]surveyAssociationRow, 0, len(surveyCatalog.Choices[key]))}
-		if group.Scope == "" {
-			group.Scope = "所有回答此题的问卷。"
-		}
-		for _, label := range surveyCatalog.Choices[key] {
-			selected := factorCounts.Options[label]
-			group.Rows = append(group.Rows, surveyAssociationRow{Label: label, Degraded: countedAssociation(selected, factorCounts.Applicable, 1), Banned: countedAssociation(selected, factorCounts.Applicable, 2), Limited: countedAssociation(selected, factorCounts.Applicable, 4)})
-		}
-		result.Associations = append(result.Associations, group)
 	}
 	return result
 }
 
-func (s *Server) surveyStatistics() (surveyStatistics, error) {
-	var result surveyStatistics
+func (s *Server) surveyStatistics() (surveySummary, error) {
+	var result surveySummary
 	hit := false
 	err := s.store.db.View(func(tx *bolt.Tx) error {
 		last, err := lastSurveyID(tx.Bucket(surveyBucket))
@@ -229,8 +182,8 @@ func (s *Server) surveyStatistics() (surveyStatistics, error) {
 			return err
 		}
 		state, valid := decodeSurveyAggregate(tx.Bucket(surveyCacheBucket).Get(surveyCacheStateKey))
-		if valid && state.Range.LastSubmissionID == last {
-			result = state.Result
+		if valid && state.Version == surveyCacheVersion && state.Range.LastSubmissionID == last {
+			result = state.summary()
 			hit = true
 		}
 		return nil
@@ -238,7 +191,7 @@ func (s *Server) surveyStatistics() (surveyStatistics, error) {
 	if err != nil || hit {
 		return result, err
 	}
-	// The write transaction serializes refreshes and commits counts, cutoff and result together.
+	// Refreshes and version upgrades atomically commit counts and their cutoff, never raw answers.
 	err = s.store.db.Update(func(tx *bolt.Tx) error {
 		bucket := tx.Bucket(surveyBucket)
 		meta := tx.Bucket(surveyCacheBucket)
@@ -247,13 +200,14 @@ func (s *Server) surveyStatistics() (surveyStatistics, error) {
 			return err
 		}
 		state, valid := decodeSurveyAggregate(meta.Get(surveyCacheStateKey))
-		if valid && state.Range.LastSubmissionID == last {
-			result = state.Result
+		if valid && state.Version == surveyCacheVersion && state.Range.LastSubmissionID == last {
+			result = state.summary()
 			return nil
 		}
 		if !valid || state.Range.LastSubmissionID > last {
 			state = newSurveyAggregate()
 		}
+		previousCutoff := state.Range.LastSubmissionID
 		var next [8]byte
 		binary.BigEndian.PutUint64(next[:], state.Range.LastSubmissionID+1)
 		cursor := bucket.Cursor()
@@ -269,8 +223,10 @@ func (s *Server) surveyStatistics() (surveyStatistics, error) {
 				return err
 			}
 		}
-		state.Range.ComputedAt = s.store.now().UTC()
-		state.Result = state.statistics()
+		if state.Range.ComputedAt.IsZero() || state.Range.LastSubmissionID != previousCutoff {
+			state.Range.ComputedAt = s.store.now().UTC()
+		}
+		state.Version = surveyCacheVersion
 		encoded, err := json.Marshal(state)
 		if err != nil {
 			return err
@@ -278,7 +234,7 @@ func (s *Server) surveyStatistics() (surveyStatistics, error) {
 		if err := meta.Put(surveyCacheStateKey, encoded); err != nil {
 			return err
 		}
-		result = state.Result
+		result = state.summary()
 		return nil
 	})
 	return result, err

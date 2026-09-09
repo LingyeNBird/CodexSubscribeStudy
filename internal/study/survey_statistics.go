@@ -1,83 +1,43 @@
 package study
 
 import (
-	"math"
 	"slices"
 	"strconv"
 	"strings"
 	"time"
 )
 
-type surveyRate struct {
-	Events int `json:"events"`
-	Total  int `json:"total"`
-}
-type surveyAssociation struct {
-	Selected   surveyRate `json:"selected"`
-	Unselected surveyRate `json:"unselected"`
-	Phi        *float64   `json:"phi"`
+const surveySummaryVersion = 2
+
+type surveyOptionSummary struct {
+	Label  string `json:"label"`
+	Counts [8]int `json:"counts"`
 }
 
-func association(a, b, c, d int) surveyAssociation {
-	result := surveyAssociation{Selected: surveyRate{a, a + b}, Unselected: surveyRate{c, c + d}}
-	denominator := math.Sqrt(float64(a+b) * float64(c+d) * float64(a+c) * float64(b+d))
-	if denominator > 0 {
-		phi := (float64(a)*float64(d) - float64(b)*float64(c)) / denominator
-		result.Phi = &phi
-	}
-	return result
+type surveyFactorSummary struct {
+	ID                string                `json:"id"`
+	Title             string                `json:"title"`
+	Description       string                `json:"description"`
+	Multiple          bool                  `json:"multiple"`
+	DistributionScope string                `json:"distributionScope"`
+	AssociationScope  string                `json:"associationScope"`
+	Comparable        bool                  `json:"comparable"`
+	Applicable        [8]int                `json:"applicable"`
+	Options           []surveyOptionSummary `json:"options"`
 }
 
-type surveyCount struct {
-	Label string `json:"label"`
-	Count int    `json:"count"`
+type surveyUsageSummary struct {
+	Total int     `json:"total"`
+	Sums  [24]int `json:"sums"`
 }
-type surveyGroup struct {
-	Total int           `json:"total"`
-	Rows  []surveyCount `json:"rows"`
-}
-type surveyFactor struct {
-	ID          string                 `json:"id"`
-	Title       string                 `json:"title"`
-	Description string                 `json:"description"`
-	Multiple    bool                   `json:"multiple"`
-	Eligibility string                 `json:"eligibility"`
-	Groups      map[string]surveyGroup `json:"groups"`
-}
-type surveyAssociationRow struct {
-	Label    string            `json:"label"`
-	Degraded surveyAssociation `json:"degraded"`
-	Banned   surveyAssociation `json:"banned"`
-	Limited  surveyAssociation `json:"limited"`
-}
-type surveyAssociationGroup struct {
-	ID    string                 `json:"id"`
-	Title string                 `json:"title"`
-	Scope string                 `json:"scope"`
-	Total int                    `json:"total"`
-	Rows  []surveyAssociationRow `json:"rows"`
-}
-type surveyStatusCount struct {
-	Label string `json:"label"`
-	Count int    `json:"count"`
-	Tone  string `json:"tone"`
-}
-type surveyUsagePattern struct {
-	Total  int         `json:"total"`
-	Levels [24]float64 `json:"levels"`
-}
-type surveyStatistics struct {
-	Total        int                      `json:"total"`
-	Degraded     int                      `json:"degraded"`
-	Banned       int                      `json:"banned"`
-	Limited      int                      `json:"limited"`
-	Statuses     []surveyStatusCount      `json:"statuses"`
-	Normal       int                      `json:"normal"`
-	Both         int                      `json:"both"`
-	Factors      []surveyFactor           `json:"factors"`
-	Associations []surveyAssociationGroup `json:"associations"`
-	UsagePattern surveyUsagePattern       `json:"usagePattern"`
-	Range        surveyStatisticsRange    `json:"range"`
+
+type surveySummary struct {
+	Version       int                   `json:"version"`
+	CatalogDigest string                `json:"catalogDigest"`
+	Statuses      [8]int                `json:"statuses"`
+	Factors       []surveyFactorSummary `json:"factors"`
+	UsagePattern  surveyUsageSummary    `json:"usagePattern"`
+	Range         surveyStatisticsRange `json:"range"`
 }
 
 type surveyStatisticsRange struct {

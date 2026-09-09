@@ -1,20 +1,49 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from "vue";
 import SurveyAssociationCard from "./SurveyAssociationCard.vue";
 import SurveyAssociationDialog from "./SurveyAssociationDialog.vue";
 import { toolIcons } from "../icons/toolIcons";
-import type { AssociationGroup, SurveyOutcome } from "../../data/surveyApi";
-const props = defineProps<{ associations: AssociationGroup[] }>();
+import type { SurveyFactorSummary, SurveyOutcome } from "../../data/surveyApi";
+import {
+  calculateAssociations,
+  effectiveOutcomeMask,
+  surveyOutcomes,
+  type AssociationGroup,
+} from "../../data/surveyStatistics";
+const props = defineProps<{ factors: SurveyFactorSummary[] }>();
+const emit = defineEmits<{ outcomeChange: [mask: number] }>();
 const onlyAssociated = ref(false);
 const factor = ref("all");
-const outcome = ref<SurveyOutcome>("degraded");
+const selectedOutcomes = ref<SurveyOutcome[]>(["degraded"]);
+const lastSelectedOutcome = ref<SurveyOutcome>("degraded");
+const outcomeMask = computed(() =>
+  effectiveOutcomeMask(selectedOutcomes.value, lastSelectedOutcome.value),
+);
+watch(outcomeMask, (mask) => emit("outcomeChange", mask), { immediate: true });
+const outcomeLabel = computed(() =>
+  surveyOutcomes
+    .filter((item) => (item.bit & outcomeMask.value) !== 0)
+    .map((item) => item.label)
+    .join("或"),
+);
+const associations = computed(() => calculateAssociations(props.factors, outcomeMask.value));
+function toggleOutcome(id: SurveyOutcome) {
+  if (selectedOutcomes.value.includes(id)) {
+    selectedOutcomes.value = selectedOutcomes.value.filter((value) => value !== id);
+  } else {
+    lastSelectedOutcome.value = id;
+    selectedOutcomes.value = surveyOutcomes
+      .filter((item) => item.id === id || selectedOutcomes.value.includes(item.id))
+      .map((item) => item.id);
+  }
+}
 const collapsedSections = ref<Record<string, boolean>>({});
 const collapsedGroups = ref<Record<string, boolean>>({});
 const factorPicker = ref<HTMLElement | null>(null);
 const factorTrigger = ref<HTMLButtonElement | null>(null);
 const menuOpen = ref(false);
 const factorLabel = computed(
-  () => props.associations.find((group) => group.id === factor.value)?.title ?? "全部因素",
+  () => associations.value.find((group) => group.id === factor.value)?.title ?? "全部因素",
 );
 const comparison = shallowRef<{
   group: AssociationGroup;
@@ -72,11 +101,6 @@ function navigateFactors(event: KeyboardEvent) {
 }
 onMounted(() => document.addEventListener("pointerdown", dismissFactors));
 onBeforeUnmount(() => document.removeEventListener("pointerdown", dismissFactors));
-const outcomes: { id: SurveyOutcome; label: string }[] = [
-  { id: "degraded", label: "降智" },
-  { id: "banned", label: "封号" },
-  { id: "limited", label: "风控（限流）" },
-];
 const sections = [
   {
     id: "connection",
@@ -120,13 +144,13 @@ const layout = (id: string) => {
   return "tile";
 };
 const groups = computed(() =>
-  props.associations
+  associations.value
     .filter((group) => factor.value === "all" || group.id === factor.value)
     .map((group) => ({
       ...group,
       layout: layout(group.id),
       rows: group.rows.filter(
-        (row) => !onlyAssociated.value || Math.abs(row[outcome.value].phi ?? 0) >= 0.1,
+        (row) => !onlyAssociated.value || Math.abs(row.association.phi ?? 0) >= 0.1,
       ),
     }))
     .filter((group) => group.rows.length),
@@ -137,7 +161,7 @@ const groupedSections = computed(() =>
     {
       id: "other",
       title: "其他因素",
-      groups: props.associations
+      groups: associations.value
         .filter((group) => !assigned.has(group.id))
         .map((group) => group.id),
     },
@@ -163,7 +187,8 @@ const optionCount = computed(() =>
     </div>
     <div class="card-filter">
       <label
-        ><input v-model="onlyAssociated" type="checkbox" />仅显示当前异常 |φ| ≥ 0.10 的选项</label
+        ><input v-model="onlyAssociated" type="checkbox" />仅显示当前异常组合 |φ| ≥ 0.10
+        的选项</label
       >
       <span aria-live="polite">{{ groups.length }} 个因素 · {{ optionCount }} 个选项</span>
     </div>
@@ -231,7 +256,7 @@ const optionCount = computed(() =>
               v-for="row in group.rows"
               :key="row.label"
               :row="row"
-              :outcome="outcome"
+              :outcome-label="outcomeLabel"
               :layout="group.layout"
               :icon="group.layout === 'tool' ? toolIcons[row.label] : undefined"
               @inspect="openComparison(group, row, $event)"
@@ -241,7 +266,7 @@ const optionCount = computed(() =>
       </div>
     </section>
     <p v-if="!groups.length" class="correlation-empty">
-      当前异常没有达到此关联强度的选项，可取消筛选查看全部。
+      当前异常组合没有达到此关联强度的选项，可取消筛选查看全部。
     </p>
     <details class="correlation-method">
       <summary>如何理解颜色、相关系数与比较范围？</summary>
@@ -261,16 +286,24 @@ const optionCount = computed(() =>
       </p>
     </details>
     <div v-show="!comparison" class="correlation-toolbar">
-      <div class="outcome-switch" role="group" aria-label="异常类型切换">
-        <button
-          v-for="item in outcomes"
-          :key="item.id"
-          type="button"
-          :aria-pressed="outcome === item.id"
-          @click="outcome = item.id"
+      <div class="outcome-picker">
+        <div class="outcome-switch" role="group" aria-label="异常类型（多选并集，可全部取消）">
+          <button
+            v-for="item in surveyOutcomes"
+            :key="item.id"
+            type="button"
+            :aria-pressed="selectedOutcomes.includes(item.id)"
+            @click="toggleOutcome(item.id)"
+          >
+            <span class="outcome-check" aria-hidden="true">{{
+              selectedOutcomes.includes(item.id) ? "✓" : ""
+            }}</span
+            >{{ item.label }}
+          </button>
+        </div>
+        <span v-if="!selectedOutcomes.length" class="outcome-fallback" role="status"
+          >按{{ outcomeLabel }}显示</span
         >
-          {{ item.label }}
-        </button>
       </div>
       <div
         ref="factorPicker"
@@ -323,7 +356,7 @@ const optionCount = computed(() =>
       :row="comparison.row"
       :title="comparison.group.title"
       :scope="comparison.group.scope"
-      :outcome="outcome"
+      :outcome-label="outcomeLabel"
       @close="comparison = null"
     />
   </section>

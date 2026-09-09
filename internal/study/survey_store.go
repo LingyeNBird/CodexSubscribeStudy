@@ -13,7 +13,7 @@ var surveyBucket = []byte("survey-submissions")
 var surveyCacheBucket = []byte("survey-statistics")
 var surveyStorageVersionKey = []byte("storage-version")
 
-const surveyStorageVersion = "2"
+const surveyStorageVersion = "3"
 
 type storedSurveyRecord struct {
 	SurveySubmission
@@ -70,6 +70,21 @@ func initSurvey(tx *bolt.Tx) error {
 			}
 		}
 		answersChanged := false
+		if raw := answers["models"]; len(raw) > 0 {
+			var values []string
+			if err := json.Unmarshal(raw, &values); err != nil {
+				return err
+			}
+			for index, value := range values {
+				if value == "GPT-5.6 Sora" {
+					values[index] = "GPT-5.6 Sol"
+					answersChanged = true
+				}
+			}
+			if answersChanged {
+				answers["models"], _ = json.Marshal(values)
+			}
+		}
 		if raw := answers["network"]; len(raw) > 0 {
 			var values []string
 			if err := json.Unmarshal(raw, &values); err != nil {

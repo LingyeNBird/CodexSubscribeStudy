@@ -53,22 +53,22 @@ func TestSurveyPersistenceAndRepeatedSubmission(t *testing.T) {
 	server = NewServer(store, fstest.MapFS{})
 	w := surveyCall(server, "GET", "/api/survey/statistics", "", peer, "")
 	check(w, 200)
-	var stats surveyStatistics
+	var stats surveySummary
 	if err := json.Unmarshal(w.Body.Bytes(), &stats); err != nil {
 		t.Fatal(err)
 	}
-	if stats.Total != 3 || stats.Both != 2 || stats.Normal != 1 || stats.Degraded != 2 || stats.Banned != 2 {
+	if stats.Statuses != [8]int{1, 0, 0, 2, 0, 0, 0, 0} {
 		t.Fatalf("incorrect totals %+v", stats)
 	}
-	for _, g := range stats.Associations {
+	for _, g := range stats.Factors {
 		if g.ID == "proxy" {
-			if g.Total != 2 || g.Rows[2].Degraded.Phi != nil {
+			if g.Applicable != [8]int{0, 0, 0, 2, 0, 0, 0, 0} || g.Options[2].Counts != g.Applicable {
 				t.Fatal("ineligible normal counted as unselected")
 			}
 		}
 	}
 	for _, factor := range stats.Factors {
-		if factor.ID == "duration" && factor.Groups["degraded"].Rows[1].Count != 2 {
+		if factor.ID == "duration" && factor.Options[1].Counts[3] != 2 {
 			t.Fatal("duration normalization")
 		}
 	}
@@ -105,7 +105,7 @@ func TestSurveyRejectsInvalidAndHiddenAnswers(t *testing.T) {
 		}
 	}
 	stats, err := server.surveyStatistics()
-	if err != nil || stats.Total != 0 {
+	if err != nil || testSurveyCount(stats.Statuses) != 0 {
 		t.Fatal("invalid submissions persisted")
 	}
 }
@@ -160,25 +160,8 @@ func TestSurveyStatusMigrationAndRateLimiting(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if stats.Total != 6 || stats.Normal != 1 || stats.Degraded != 3 || stats.Banned != 3 || stats.Limited != 2 || stats.Both != 2 {
+	if stats.Statuses != [8]int{1, 1, 1, 1, 1, 0, 0, 1} {
 		t.Fatalf("wrong totals: %+v", stats)
-	}
-	sum := 0
-	for _, status := range stats.Statuses {
-		sum += status.Count
-	}
-	if sum != 6 || stats.Statuses[4].Count != 1 || stats.Statuses[7].Count != 1 {
-		t.Fatal("incorrect combination counts")
-	}
-	for _, factor := range stats.Factors {
-		if factor.ID == "plans" && factor.Groups["limited"].Total != 2 {
-			t.Fatal("missing rate-limited distribution")
-		}
-	}
-	for _, group := range stats.Associations {
-		if group.ID == "plans" && (group.Rows[0].Limited.Selected.Events != 1 || group.Rows[0].Limited.Unselected.Events != 1) {
-			t.Fatal("incorrect rate-limited association")
-		}
 	}
 }
 
@@ -208,14 +191,14 @@ func TestSurveyDirectIPAndStability(t *testing.T) {
 		t.Fatal(err)
 	}
 	found := false
-	for _, group := range stats.Associations {
+	for _, group := range stats.Factors {
 		if group.ID == "ipStability" {
 			found = true
-			if group.Total != 2 || group.Rows[1].Banned.Selected.Events != 1 || group.Rows[1].Banned.Unselected.Events != 0 {
+			if group.Applicable != [8]int{1, 0, 1, 0, 0, 0, 0, 0} || group.Options[1].Counts != [8]int{0, 0, 1, 0, 0, 0, 0, 0} {
 				t.Fatal("wrong stability comparison population")
 			}
 		}
-		if group.ID == "ipRisk" && group.Total != 2 {
+		if group.ID == "ipRisk" && testSurveyCount(group.Applicable) != 2 {
 			t.Fatal("direct IP omitted from risk statistics")
 		}
 	}

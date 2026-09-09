@@ -21,6 +21,66 @@
 .results-heading > a {
   flex-shrink: 0;
 }
+.results-heading > div {
+  min-width: 0;
+  flex: 1;
+}
+.participation-card {
+  display: grid;
+  gap: 5px;
+  width: min(390px, 45%);
+  padding: 27px 30px;
+  border: var(--line);
+  border-radius: 20px;
+  background: var(--mint);
+  box-shadow: 5px 6px 0 var(--ink);
+  color: var(--ink);
+  font-size: 1rem;
+  line-height: 1.6;
+  text-decoration: none;
+  transform-origin: center;
+  animation: participation-breathe 3.6s ease-in-out infinite;
+}
+.participation-card strong {
+  font-size: 1.12rem;
+}
+.participation-card b {
+  display: inline-block;
+  margin-left: 12px;
+  font-size: 1.4rem;
+  line-height: 1;
+}
+.participation-card.is-submitted {
+  background: var(--sun);
+  animation: none;
+}
+.participation-card:hover {
+  animation-play-state: paused;
+  box-shadow: 6px 7px 0 var(--ink);
+}
+.participation-card:active {
+  animation: none;
+  transform: translate(2px, 2px);
+  box-shadow: 2px 3px 0 var(--ink);
+}
+.participation-card:focus-visible {
+  outline: 3px solid #427b62;
+  outline-offset: 6px;
+}
+@keyframes participation-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.013);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .participation-card {
+    animation: none;
+  }
+}
 .research-tabs {
   display: flex;
   gap: 28px;
@@ -220,6 +280,20 @@
   font-weight: 700;
   box-shadow: 2px 2px 0 var(--ink);
 }
+.analysis-switch .share-button {
+  margin-left: auto;
+  background: var(--sun);
+  border: var(--line);
+  box-shadow: 2px 3px 0 var(--ink);
+  font-weight: 700;
+}
+.analysis-switch .share-button:hover:not(:disabled) {
+  background: var(--mint);
+}
+.analysis-switch .share-button:focus-visible {
+  outline: 3px solid #427b62;
+  outline-offset: 4px;
+}
 .factors-heading {
   margin: 32px 0 22px;
 }
@@ -281,6 +355,11 @@
   .results-heading {
     align-items: start;
     flex-direction: column;
+  }
+  .participation-card {
+    width: 100%;
+    max-width: 480px;
+    padding: 23px 25px;
   }
   .results-mode {
     align-items: start;

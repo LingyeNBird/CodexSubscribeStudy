@@ -1,20 +1,15 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
-import type { AssociationGroup, SurveyOutcome } from "../../data/surveyApi";
+import { onBeforeUnmount, onMounted, ref } from "vue";
+import type { AssociationGroup } from "../../data/surveyStatistics";
 import { coefficient, direction, explanation, percent, tone } from "../../data/surveyAssociation";
-const props = defineProps<{
+defineProps<{
   row: AssociationGroup["rows"][number];
   title: string;
   scope: string;
-  outcome: SurveyOutcome;
+  outcomeLabel: string;
 }>();
 const emit = defineEmits<{ close: [] }>();
 const dialog = ref<HTMLDialogElement | null>(null);
-const outcomes = computed(() => [
-  { id: "degraded", label: "降智", value: props.row.degraded },
-  { id: "banned", label: "封号", value: props.row.banned },
-  { id: "limited", label: "风控（限流）", value: props.row.limited },
-]);
 const backdropPressed = ref(false);
 onMounted(() => dialog.value?.showModal());
 onBeforeUnmount(() => {
@@ -48,42 +43,42 @@ onBeforeUnmount(() => {
             关闭 <span aria-hidden="true">×</span>
           </button>
         </header>
-        <div class="option-comparisons">
-          <section
-            v-for="item in outcomes"
-            :key="item.id"
-            class="outcome-detail"
-            :class="{ 'is-current': outcome === item.id }"
-            :aria-label="`${row.label}与${item.label}的关联`"
-          >
-            <header>
-              <h3>{{ item.label }}</h3>
-              <span>φ {{ coefficient(item.value.phi) }}</span>
-            </header>
-            <span class="detail-direction" :class="`tone-${tone(item.value.phi)}`">{{
-              direction(item.value.phi)
-            }}</span>
-            <dl>
-              <div>
-                <dt>选择该项</dt>
-                <dd>
-                  <strong>{{ percent(item.value.selected) }}</strong
-                  ><span>{{ item.value.selected.events }}/{{ item.value.selected.total }} 份</span>
-                </dd>
-              </div>
-              <div>
-                <dt>未选该项</dt>
-                <dd>
-                  <strong>{{ percent(item.value.unselected) }}</strong
-                  ><span
-                    >{{ item.value.unselected.events }}/{{ item.value.unselected.total }} 份</span
-                  >
-                </dd>
-              </div>
-            </dl>
-            <p>{{ explanation(item.value) }}</p>
-          </section>
-        </div>
+        <section class="outcome-detail" :aria-label="`${row.label}与${outcomeLabel}的关联`">
+          <header>
+            <h3>{{ outcomeLabel }}</h3>
+            <span>φ {{ coefficient(row.association.phi) }}</span>
+          </header>
+          <span class="detail-direction" :class="`tone-${tone(row.association.phi)}`">{{
+            direction(row.association.phi)
+          }}</span>
+          <dl>
+            <div>
+              <dt>选择该项</dt>
+              <dd>
+                <strong>{{ percent(row.association.selected) }}</strong
+                ><span
+                  >{{ row.association.selected.events }}/{{
+                    row.association.selected.total
+                  }}
+                  份</span
+                >
+              </dd>
+            </div>
+            <div>
+              <dt>未选该项</dt>
+              <dd>
+                <strong>{{ percent(row.association.unselected) }}</strong
+                ><span
+                  >{{ row.association.unselected.events }}/{{
+                    row.association.unselected.total
+                  }}
+                  份</span
+                >
+              </dd>
+            </div>
+          </dl>
+          <p>{{ explanation(row.association) }}</p>
+        </section>
         <footer class="dialog-scope">
           <strong>比较人群</strong>
           <p>{{ scope }}</p>
