@@ -127,6 +127,77 @@
   margin: 7px 0 0;
   line-height: 1.85;
 }
+.phi-calculation {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid #d0d5c7;
+  font-variant-numeric: tabular-nums;
+}
+.phi-calculation h3 {
+  margin: 0 0 16px;
+  font-size: 1rem;
+}
+.phi-counts {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+.phi-counts th,
+.phi-counts td {
+  padding: 10px 8px;
+  text-align: left;
+  border-bottom: 1px solid #dce2d5;
+}
+.phi-counts thead th {
+  color: var(--muted);
+  font-weight: 500;
+}
+.phi-counts tbody th {
+  font-weight: 600;
+}
+.phi-counts td strong {
+  color: #35654b;
+}
+.phi-calculation h4 {
+  margin: 22px 0 10px;
+  font-size: 0.8rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+.phi-formula-scroll {
+  overflow-x: auto;
+  padding: 12px;
+  border-radius: 10px;
+  background: #eef2e8;
+}
+.phi-formula-scroll:focus-visible {
+  outline: 3px solid #427b62;
+  outline-offset: 2px;
+}
+.phi-formula {
+  width: max-content;
+  min-width: 100%;
+  font-size: 0.9rem;
+}
+.phi-formula :deep(.katex-display) {
+  margin: 8px 0;
+}
+.phi-result {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+}
+.phi-result > span {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.phi-result strong {
+  font-size: 1.1rem;
+}
+
 @media (max-width: 700px) {
   .dialog-content {
     padding: 20px;
@@ -136,5 +207,12 @@
   }
   .outcome-detail dl {
     margin-top: 12px;
+  }
+  .phi-counts {
+    font-size: 0.72rem;
+  }
+  .phi-counts th,
+  .phi-counts td {
+    padding: 9px 5px;
   }
 }

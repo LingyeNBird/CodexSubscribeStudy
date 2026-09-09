@@ -6,22 +6,28 @@ import {
   countStatuses,
   surveyOutcomes,
 } from "./surveyStatistics";
-import { direction, tone } from "./surveyAssociation";
+import { coefficient, direction, percent, tone } from "./surveyAssociation";
 
 export const surveyShareUrl =
   "https://codex.nightunderfly.online/#/studies/chatgpt-account-survey/results";
 export const posterWidth = 1200;
+export type PosterDetail = "default" | "coefficient" | "full";
 export interface PosterSelection {
   overview: boolean;
   factorIds: string[];
   outcomeMask: number;
+  detail: PosterDetail;
 }
 export interface SurveyPoster {
   svg: string;
   width: number;
   height: number;
 }
-export type PosterMeasure = (text: string, size: number, weight: number) => number;
+export type PosterMeasure = (
+  text: string,
+  size: number,
+  weight: number,
+) => number;
 
 const colors = {
   ink: "#26352e",
@@ -49,7 +55,13 @@ function xml(value: string): string {
   return value.replace(
     /[&<>"']/g,
     (character) =>
-      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" })[character]!,
+      ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&apos;",
+      })[character]!,
   );
 }
 function wrap(
@@ -78,12 +90,21 @@ export function buildSurveyPoster(
   measure: PosterMeasure = (text, size) =>
     [...text].reduce(
       (width, character) =>
-        width + size * (/[^\x00-\x7F]/.test(character) ? 1 : /[MW@]/.test(character) ? 0.95 : 0.65),
+        width +
+        size *
+          (/[^\x00-\x7F]/.test(character)
+            ? 1
+            : /[MW@]/.test(character)
+              ? 0.95
+              : 0.65),
       0,
     ),
 ): SurveyPoster {
-  const factors = summary.factors.filter((factor) => selection.factorIds.includes(factor.id));
-  if (!selection.overview && !factors.length) throw new Error("请至少选择一项分享内容。");
+  const factors = summary.factors.filter((factor) =>
+    selection.factorIds.includes(factor.id),
+  );
+  if (!selection.overview && !factors.length)
+    throw new Error("请至少选择一项分享内容。");
   if (
     !Number.isInteger(selection.outcomeMask) ||
     selection.outcomeMask < 1 ||
@@ -92,7 +113,10 @@ export function buildSurveyPoster(
     throw new Error("请选择有效的异常统计范围。");
   const statistics = calculateSurveyStatistics(summary);
   const associations = new Map(
-    calculateAssociations(factors, selection.outcomeMask).map((group) => [group.id, group]),
+    calculateAssociations(factors, selection.outcomeMask).map((group) => [
+      group.id,
+      group,
+    ]),
   );
   const outcomeLabel = surveyOutcomes
     .filter((item) => item.bit & selection.outcomeMask)
@@ -111,7 +135,13 @@ export function buildSurveyPoster(
     parts.push(
       `<rect x="${x}" y="${y}" width="${width}" height="${height}" rx="${radius}" fill="${fill}"${stroke ? ` stroke="${colors.ink}" stroke-width="3"` : ""}/>`,
     );
-  const panel = (x: number, y: number, width: number, height: number, fill: string) => {
+  const panel = (
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    fill: string,
+  ) => {
     rect(x + 7, y + 8, width, height, colors.ink, 18, false);
     rect(x, y, width, height, fill);
   };
@@ -148,7 +178,9 @@ export function buildSurveyPoster(
       if (qr.data[row * qr.size + column])
         qrPath += `M${qrX + (column + 4) * cell} ${qrY + (row + 4) * cell}h${cell}v${cell}h-${cell}z`;
     }
-  parts.push(`<path d="${qrPath}" fill="${colors.ink}" shape-rendering="crispEdges"/>`);
+  parts.push(
+    `<path d="${qrPath}" fill="${colors.ink}" shape-rendering="crispEdges"/>`,
+  );
   text("扫码查看 · 参与问卷", 1007, 340, 21, 700, colors.ink, "middle");
   let y = 421;
   if (selection.overview) {
@@ -192,29 +224,55 @@ export function buildSurveyPoster(
       [colors.mint, colors.violet, colors.peach, colors.sun][factorIndex % 4]!,
       10,
     );
-    text(String(factorIndex + 1).padStart(2, "0"), 84, y + 33, 23, 800, colors.ink, "middle");
+    text(
+      String(factorIndex + 1).padStart(2, "0"),
+      84,
+      y + 33,
+      23,
+      800,
+      colors.ink,
+      "middle",
+    );
     const headings = wrap(factor.title, 995, 36, 800, measure);
-    headings.forEach((heading, index) => text(heading, 127, y + 36 + index * 45, 36, 800));
+    headings.forEach((heading, index) =>
+      text(heading, 127, y + 36 + index * 45, 36, 800),
+    );
     y += Math.max(48, headings.length * 45) + 22;
-    parts.push(`<path d="M60 ${y}H1140" stroke="${colors.ink}" stroke-width="4"/>`);
+    parts.push(
+      `<path d="M60 ${y}H1140" stroke="${colors.ink}" stroke-width="4"/>`,
+    );
     y += 26;
     const columns = factor.options.length <= 2 ? 2 : 3;
     const width = (1080 - (columns - 1) * 24) / columns;
     const group = associations.get(factor.id);
     const isTool = factor.id === "tools" || factor.id === "official";
+    const extraHeight =
+      !group || selection.detail === "default"
+        ? 0
+        : selection.detail === "coefficient"
+          ? 44
+          : 184;
     for (let offset = 0; offset < factor.options.length; offset += columns) {
       const options = factor.options.slice(offset, offset + columns);
-      const names = options.map((option) => wrap(option.label, width - 44, 30, 700, measure));
+      const names = options.map((option) =>
+        wrap(option.label, width - 44, 30, 700, measure),
+      );
       const rowHeight = Math.max(
-        ...names.map((lines) => (isTool ? 90 : 26) + lines.length * 39 + 86),
+        ...names.map(
+          (lines) => (isTool ? 90 : 26) + lines.length * 39 + 86 + extraHeight,
+        ),
       );
       options.forEach((option, column) => {
         const x = 60 + column * (width + 24);
         const association = group?.rows[offset + column]?.association;
-        const fill = association ? toneColors[tone(association.phi)]! : colors.violet;
+        const fill = association
+          ? toneColors[tone(association.phi)]!
+          : colors.violet;
         panel(x, y, width, rowHeight, fill);
         if (isTool) {
-          const source = icons[option.label]?.match(/<svg\b[\s\S]*?<\/svg>/)?.[0];
+          const source = icons[option.label]?.match(
+            /<svg\b[\s\S]*?<\/svg>/,
+          )?.[0];
           if (source)
             parts.push(
               source.replace(/<svg\b[^>]*>/, (tag) =>
@@ -226,7 +284,16 @@ export function buildSurveyPoster(
                   ),
               ),
             );
-          else text(option.label.slice(0, 2), x + width / 2, y + 61, 35, 800, colors.ink, "middle");
+          else
+            text(
+              option.label.slice(0, 2),
+              x + width / 2,
+              y + 61,
+              35,
+              800,
+              colors.ink,
+              "middle",
+            );
         }
         const nameX = isTool ? x + width / 2 : x + 22;
         names[column]!.forEach((line, index) =>
@@ -245,9 +312,41 @@ export function buildSurveyPoster(
         else {
           const total = countStatuses(factor.applicable, selection.outcomeMask);
           const count = countStatuses(option.counts, selection.outcomeMask);
-          message = total ? `${count} 份 · ${((100 * count) / total).toFixed(1)}%` : "暂无样本";
+          message = total
+            ? `${count} 份 · ${((100 * count) / total).toFixed(1)}%`
+            : "暂无样本";
         }
-        text(message, x + width / 2, y + rowHeight - 31, 28, 800, colors.ink, "middle");
+        const messageY = y + rowHeight - extraHeight - 31;
+        text(message, x + width / 2, messageY, 28, 800, colors.ink, "middle");
+        if (association && selection.detail !== "default") {
+          text(
+            `φ ${coefficient(association.phi)}`,
+            x + width / 2,
+            messageY + 40,
+            27,
+            700,
+            colors.ink,
+            "middle",
+          );
+          if (selection.detail === "full") {
+            parts.push(
+              `<path d="M${x + 22} ${messageY + 57}h${width - 44}" stroke="${colors.ink}" stroke-opacity=".2"/>`,
+            );
+            for (const [index, label, values] of [
+              [0, "选择该项", association.selected],
+              [1, "未选该项", association.unselected],
+            ] as const) {
+              const baseline = messageY + 86 + index * 64;
+              text(label, x + 22, baseline, 20, 600);
+              const line = `${values.events}/${values.total} 份 · ${percent(values)}`;
+              const size = Math.min(
+                23,
+                (23 * (width - 44)) / measure(line, 23, 700),
+              );
+              text(line, x + 22, baseline + 30, size, 700);
+            }
+          }
+        }
       });
       y += rowHeight + 24;
     }
@@ -269,7 +368,9 @@ export function buildSurveyPoster(
 }
 
 export async function posterToPng(poster: SurveyPoster): Promise<Blob> {
-  const url = URL.createObjectURL(new Blob([poster.svg], { type: "image/svg+xml;charset=utf-8" }));
+  const url = URL.createObjectURL(
+    new Blob([poster.svg], { type: "image/svg+xml;charset=utf-8" }),
+  );
   try {
     const image = new Image();
     await new Promise<void>((resolve, reject) => {
@@ -286,7 +387,9 @@ export async function posterToPng(poster: SurveyPoster): Promise<Blob> {
     return await new Promise<Blob>((resolve, reject) =>
       canvas.toBlob(
         (blob) =>
-          blob ? resolve(blob) : reject(new Error("图片导出失败，请减少分享内容后重试。")),
+          blob
+            ? resolve(blob)
+            : reject(new Error("图片导出失败，请减少分享内容后重试。")),
         "image/png",
       ),
     );

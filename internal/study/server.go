@@ -193,7 +193,18 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusServiceUnavailable, "frontend_build_required")
 		return
 	}
-	w.Header().Set("Content-Type", mime.TypeByExtension(path.Ext(name)))
+	contentType := mime.TypeByExtension(path.Ext(name))
+	if contentType == "" {
+		switch path.Ext(name) {
+		case ".woff2":
+			contentType = "font/woff2"
+		case ".woff":
+			contentType = "font/woff"
+		case ".ttf":
+			contentType = "font/ttf"
+		}
+	}
+	w.Header().Set("Content-Type", contentType)
 	if name == "index.html" {
 		w.Header().Set("Cache-Control", "no-cache")
 	} else {

@@ -1,8 +1,23 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from "vue";
-import type { SurveySummary } from "../../data/surveyApi";
-import { surveyOutcomes } from "../../data/surveyStatistics";
-import { buildSurveyPoster, posterToPng, type SurveyPoster } from "../../data/surveySharePoster";
+import {
+  computed,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  shallowRef,
+  watch,
+} from "vue";
+import type { SurveyOutcome, SurveySummary } from "../../data/surveyApi";
+import {
+  effectiveOutcomeMask,
+  surveyOutcomes,
+} from "../../data/surveyStatistics";
+import {
+  buildSurveyPoster,
+  posterToPng,
+  type PosterDetail,
+  type SurveyPoster,
+} from "../../data/surveySharePoster";
 import claudeIcon from "../icons/ClaudeCodeIcon.vue?raw";
 import ompIcon from "../icons/OhMyPiIcon.vue?raw";
 import openCodeIcon from "../icons/OpenCodeIcon.vue?raw";
@@ -21,13 +36,40 @@ const previewUrl = ref("");
 const error = ref("");
 const saving = ref(false);
 const backdropPressed = ref(false);
-const outcomeLabel = computed(() =>
+const selectedOutcomes = ref<SurveyOutcome[]>(
   surveyOutcomes
     .filter((item) => item.bit & props.outcomeMask)
-    .map((item) => item.label)
-    .join("或"),
+    .map((item) => item.id),
 );
-const hasSelection = computed(() => overview.value || factorIds.value.length > 0);
+const lastSelectedOutcome = ref<SurveyOutcome>(
+  selectedOutcomes.value.at(-1) ?? "degraded",
+);
+const outcomeMask = computed(() =>
+  effectiveOutcomeMask(selectedOutcomes.value, lastSelectedOutcome.value),
+);
+const detail = ref<PosterDetail>("default");
+const detailOptions: { value: PosterDetail; label: string }[] = [
+  { value: "default", label: "默认" },
+  { value: "coefficient", label: "稍详细" },
+  { value: "full", label: "更详细" },
+];
+function toggleOutcome(id: SurveyOutcome) {
+  if (selectedOutcomes.value.includes(id)) {
+    selectedOutcomes.value = selectedOutcomes.value.filter(
+      (value) => value !== id,
+    );
+  } else {
+    lastSelectedOutcome.value = id;
+    selectedOutcomes.value = surveyOutcomes
+      .filter(
+        (item) => item.id === id || selectedOutcomes.value.includes(item.id),
+      )
+      .map((item) => item.id);
+  }
+}
+const hasSelection = computed(
+  () => overview.value || factorIds.value.length > 0,
+);
 const icons = {
   "Claude Code": claudeIcon,
   "oh-my-pi": ompIcon,
@@ -56,7 +98,12 @@ function regenerate() {
       : undefined;
     const result = buildSurveyPoster(
       props.summary,
-      { overview: overview.value, factorIds: factorIds.value, outcomeMask: props.outcomeMask },
+      {
+        overview: overview.value,
+        factorIds: factorIds.value,
+        outcomeMask: outcomeMask.value,
+        detail: detail.value,
+      },
       icons,
       measure,
     );
@@ -65,7 +112,8 @@ function regenerate() {
       new Blob([result.svg], { type: "image/svg+xml;charset=utf-8" }),
     );
   } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : "海报生成失败，请重试。";
+    error.value =
+      cause instanceof Error ? cause.message : "海报生成失败，请重试。";
   }
 }
 
@@ -85,13 +133,18 @@ async function download() {
     link.click();
     link.remove();
   } catch (cause) {
-    if (!disposed) error.value = cause instanceof Error ? cause.message : "图片导出失败，请重试。";
+    if (!disposed)
+      error.value =
+        cause instanceof Error ? cause.message : "图片导出失败，请重试。";
   } finally {
     saving.value = false;
   }
 }
 
-watch([overview, factorIds, () => props.outcomeMask, () => props.summary], regenerate);
+watch(
+  [overview, factorIds, outcomeMask, detail, () => props.summary],
+  regenerate,
+);
 onMounted(async () => {
   dialog.value?.showModal();
   measureContext = document.createElement("canvas").getContext("2d");
@@ -118,9 +171,25 @@ onBeforeUnmount(() => {
     >
       <header class="share-heading">
         <div>
-          <span>共研 · 分享海报</span>
           <h2 id="share-heading">把这份统计，分享出去。</h2>
         </div>
+        <fieldset
+          class="share-outcome-picker"
+          :disabled="saving"
+          aria-label="关联视角"
+        >
+          <label
+            v-for="outcome in surveyOutcomes"
+            :key="outcome.id"
+            :class="{ selected: selectedOutcomes.includes(outcome.id) }"
+          >
+            <input
+              type="checkbox"
+              :checked="selectedOutcomes.includes(outcome.id)"
+              @change="toggleOutcome(outcome.id)"
+            />{{ outcome.label }}
+          </label>
+        </fieldset>
         <button
           type="button"
           class="share-close"
@@ -137,9 +206,27 @@ onBeforeUnmount(() => {
             <legend>选择分享内容</legend>
             <label class="overview-choice" :class="{ selected: overview }"
               ><input v-model="overview" type="checkbox" /><span
-                ><strong>问卷统计</strong><small>问卷样本数、各类异常数量</small></span
+                ><strong>问卷统计</strong></span
               ></label
             >
+            <fieldset class="share-detail">
+              <legend>详细程度</legend>
+              <div class="share-detail-options">
+                <label
+                  v-for="option in detailOptions"
+                  :key="option.value"
+                  :class="{ selected: detail === option.value }"
+                >
+                  <input
+                    v-model="detail"
+                    type="radio"
+                    name="share-detail"
+                    :value="option.value"
+                  />
+                  {{ option.label }}
+                </label>
+              </div>
+            </fieldset>
             <div class="share-factor-heading">
               <strong>具体因素</strong
               ><button
@@ -151,7 +238,11 @@ onBeforeUnmount(() => {
                       : summary.factors.map((factor) => factor.id)
                 "
               >
-                {{ factorIds.length === summary.factors.length ? "清空因素" : "全选因素" }}
+                {{
+                  factorIds.length === summary.factors.length
+                    ? "清空因素"
+                    : "全选因素"
+                }}
               </button>
             </div>
             <div class="share-factor-list">
@@ -159,17 +250,20 @@ onBeforeUnmount(() => {
                 v-for="factor in summary.factors"
                 :key="factor.id"
                 :class="{ selected: factorIds.includes(factor.id) }"
-                ><input v-model="factorIds" type="checkbox" :value="factor.id" /><span>{{
-                  factor.title
-                }}</span></label
+                ><input
+                  v-model="factorIds"
+                  type="checkbox"
+                  :value="factor.id"
+                /><span>{{ factor.title }}</span></label
               >
             </div>
           </fieldset>
-          <p class="share-outcome">
-            当前关联视角：<strong>{{ outcomeLabel }}</strong>
-          </p>
         </aside>
-        <section class="share-preview" aria-label="海报预览" :aria-busy="saving">
+        <section
+          class="share-preview"
+          aria-label="海报预览"
+          :aria-busy="saving"
+        >
           <img
             v-if="previewUrl && poster"
             :src="previewUrl"
@@ -178,14 +272,17 @@ onBeforeUnmount(() => {
             alt="所选问卷统计的分享海报预览"
           />
           <p v-else class="share-empty">
-            {{ error || (hasSelection ? "正在准备海报…" : "请勾选要分享的内容。") }}
+            {{
+              error || (hasSelection ? "正在准备海报…" : "请勾选要分享的内容。")
+            }}
           </p>
         </section>
       </div>
       <footer class="share-footer">
         <div>
-          <strong v-if="poster">{{ poster.width }} × {{ poster.height }} PNG</strong
-          ><span>图片在本地生成，不上传问卷数据。</span>
+          <strong v-if="poster"
+            >{{ poster.width }} × {{ poster.height }} PNG</strong
+          >
           <p v-if="error" role="alert">{{ error }}</p>
         </div>
         <button

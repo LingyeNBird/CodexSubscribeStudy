@@ -1,7 +1,15 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from "vue";
+import {
+  computed,
+  defineAsyncComponent,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  shallowRef,
+  watch,
+} from "vue";
 import SurveyAssociationCard from "./SurveyAssociationCard.vue";
-import SurveyAssociationDialog from "./SurveyAssociationDialog.vue";
 import { toolIcons } from "../icons/toolIcons";
 import type { SurveyFactorSummary, SurveyOutcome } from "../../data/surveyApi";
 import {
@@ -10,6 +18,9 @@ import {
   surveyOutcomes,
   type AssociationGroup,
 } from "../../data/surveyStatistics";
+const SurveyAssociationDialog = defineAsyncComponent(
+  () => import("./SurveyAssociationDialog.vue"),
+);
 const props = defineProps<{ factors: SurveyFactorSummary[] }>();
 const emit = defineEmits<{ outcomeChange: [mask: number] }>();
 const onlyAssociated = ref(false);
@@ -26,14 +37,20 @@ const outcomeLabel = computed(() =>
     .map((item) => item.label)
     .join("或"),
 );
-const associations = computed(() => calculateAssociations(props.factors, outcomeMask.value));
+const associations = computed(() =>
+  calculateAssociations(props.factors, outcomeMask.value),
+);
 function toggleOutcome(id: SurveyOutcome) {
   if (selectedOutcomes.value.includes(id)) {
-    selectedOutcomes.value = selectedOutcomes.value.filter((value) => value !== id);
+    selectedOutcomes.value = selectedOutcomes.value.filter(
+      (value) => value !== id,
+    );
   } else {
     lastSelectedOutcome.value = id;
     selectedOutcomes.value = surveyOutcomes
-      .filter((item) => item.id === id || selectedOutcomes.value.includes(item.id))
+      .filter(
+        (item) => item.id === id || selectedOutcomes.value.includes(item.id),
+      )
       .map((item) => item.id);
   }
 }
@@ -43,7 +60,9 @@ const factorPicker = ref<HTMLElement | null>(null);
 const factorTrigger = ref<HTMLButtonElement | null>(null);
 const menuOpen = ref(false);
 const factorLabel = computed(
-  () => associations.value.find((group) => group.id === factor.value)?.title ?? "全部因素",
+  () =>
+    associations.value.find((group) => group.id === factor.value)?.title ??
+    "全部因素",
 );
 const comparison = shallowRef<{
   group: AssociationGroup;
@@ -73,7 +92,10 @@ function selectFactor(id: string) {
   factorTrigger.value?.focus({ preventScroll: true });
 }
 function dismissFactors(event: PointerEvent) {
-  if (event.target instanceof Node && !factorPicker.value?.contains(event.target))
+  if (
+    event.target instanceof Node &&
+    !factorPicker.value?.contains(event.target)
+  )
     menuOpen.value = false;
 }
 function navigateFactors(event: KeyboardEvent) {
@@ -86,7 +108,8 @@ function navigateFactors(event: KeyboardEvent) {
   }
   if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
   const options = Array.from(
-    factorPicker.value?.querySelectorAll<HTMLButtonElement>(".factor-option") ?? [],
+    factorPicker.value?.querySelectorAll<HTMLButtonElement>(".factor-option") ??
+      [],
   );
   if (!options.length) return;
   event.preventDefault();
@@ -96,16 +119,27 @@ function navigateFactors(event: KeyboardEvent) {
       ? 0
       : event.key === "End"
         ? options.length - 1
-        : (current + (event.key === "ArrowUp" ? -1 : 1) + options.length) % options.length;
+        : (current + (event.key === "ArrowUp" ? -1 : 1) + options.length) %
+          options.length;
   options[index]?.focus();
 }
 onMounted(() => document.addEventListener("pointerdown", dismissFactors));
-onBeforeUnmount(() => document.removeEventListener("pointerdown", dismissFactors));
+onBeforeUnmount(() =>
+  document.removeEventListener("pointerdown", dismissFactors),
+);
 const sections = [
   {
     id: "connection",
     title: "连接与工具",
-    groups: ["usage", "proxy", "tools", "official", "desktopMode", "ciMode", "thirdMode"],
+    groups: [
+      "usage",
+      "proxy",
+      "tools",
+      "official",
+      "desktopMode",
+      "ciMode",
+      "thirdMode",
+    ],
   },
   {
     id: "account",
@@ -139,7 +173,8 @@ const layout = (id: string) => {
     ].includes(id)
   )
     return "pair";
-  if (["duration", "ipRisk", "people", "concurrency"].includes(id)) return "range";
+  if (["duration", "ipRisk", "people", "concurrency"].includes(id))
+    return "range";
   if (["activation", "country", "exitCountry"].includes(id)) return "list";
   return "tile";
 };
@@ -150,7 +185,8 @@ const groups = computed(() =>
       ...group,
       layout: layout(group.id),
       rows: group.rows.filter(
-        (row) => !onlyAssociated.value || Math.abs(row.association.phi ?? 0) >= 0.1,
+        (row) =>
+          !onlyAssociated.value || Math.abs(row.association.phi ?? 0) >= 0.1,
       ),
     }))
     .filter((group) => group.rows.length),
@@ -168,7 +204,9 @@ const groupedSections = computed(() =>
   ]
     .map((section) => ({
       ...section,
-      items: section.groups.flatMap((id) => groups.value.filter((group) => group.id === id)),
+      items: section.groups.flatMap((id) =>
+        groups.value.filter((group) => group.id === id),
+      ),
     }))
     .filter((section) => section.items.length),
 );
@@ -181,16 +219,20 @@ const optionCount = computed(() =>
   <section class="correlations" aria-label="异常相关性">
     <div class="correlation-key">
       <div class="color-key" aria-label="相对异常方向颜色说明">
-        <span class="key-more">异常更多</span><span class="key-less">异常更少</span
-        ><span class="key-neutral">关联较弱</span><span class="key-unknown">暂无有效比较</span>
+        <span class="key-more">异常更多</span
+        ><span class="key-less">异常更少</span
+        ><span class="key-neutral">关联较弱</span
+        ><span class="key-unknown">暂无有效比较</span>
       </div>
     </div>
     <div class="card-filter">
       <label
-        ><input v-model="onlyAssociated" type="checkbox" />仅显示当前异常组合 |φ| ≥ 0.10
-        的选项</label
+        ><input v-model="onlyAssociated" type="checkbox" />仅显示当前异常组合
+        |φ| ≥ 0.10 的选项</label
       >
-      <span aria-live="polite">{{ groups.length }} 个因素 · {{ optionCount }} 个选项</span>
+      <span aria-live="polite"
+        >{{ groups.length }} 个因素 · {{ optionCount }} 个选项</span
+      >
     </div>
     <section
       v-for="(section, index) in groupedSections"
@@ -199,7 +241,9 @@ const optionCount = computed(() =>
       :aria-labelledby="`correlation-${section.id}`"
     >
       <header class="section-heading">
-        <span class="section-number">{{ String(index + 1).padStart(2, "0") }}</span>
+        <span class="section-number">{{
+          String(index + 1).padStart(2, "0")
+        }}</span>
         <div>
           <h3 :id="`correlation-${section.id}`">
             <button
@@ -207,9 +251,12 @@ const optionCount = computed(() =>
               class="category-toggle"
               :aria-expanded="!collapsedSections[section.id]"
               :aria-controls="`section-content-${section.id}`"
-              @click="collapsedSections[section.id] = !collapsedSections[section.id]"
+              @click="
+                collapsedSections[section.id] = !collapsedSections[section.id]
+              "
             >
-              {{ section.title }}<span class="collapse-chevron" aria-hidden="true"></span>
+              {{ section.title
+              }}<span class="collapse-chevron" aria-hidden="true"></span>
             </button>
           </h3>
         </div>
@@ -225,7 +272,11 @@ const optionCount = computed(() =>
           class="factor-group"
           :class="[
             `group-${group.layout}`,
-            { 'group-wide': ['tools', 'plans', 'official', 'duration'].includes(group.id) },
+            {
+              'group-wide': ['tools', 'plans', 'official', 'duration'].includes(
+                group.id,
+              ),
+            },
           ]"
           :data-factor="group.id"
           :aria-labelledby="`factor-${group.id}`"
@@ -239,7 +290,8 @@ const optionCount = computed(() =>
                 :aria-controls="`factor-content-${group.id}`"
                 @click="collapsedGroups[group.id] = !collapsedGroups[group.id]"
               >
-                {{ group.title }}<span class="collapse-chevron" aria-hidden="true"></span>
+                {{ group.title
+                }}<span class="collapse-chevron" aria-hidden="true"></span>
               </button>
             </h4>
             <details class="group-scope">
@@ -271,7 +323,8 @@ const optionCount = computed(() =>
     <details class="correlation-method">
       <summary>如何理解颜色、相关系数与比较范围？</summary>
       <p>
-        φ 的范围是 −1 到 +1：正值表示选择该项的样本更常报告对应异常，负值表示更少。色阶按 |φ|
+        φ 的范围是 −1 到
+        +1：正值表示选择该项的样本更常报告对应异常，负值表示更少。色阶按 |φ|
         分为较弱（0.10–0.30）、中等（0.30–0.50）、较强（≥ 0.50）；低于 0.10
         使用中性色，无法计算时留白。它不是概率，也不是已通过显著性检验的结论。
       </p>
@@ -287,7 +340,11 @@ const optionCount = computed(() =>
     </details>
     <div v-show="!comparison" class="correlation-toolbar">
       <div class="outcome-picker">
-        <div class="outcome-switch" role="group" aria-label="异常类型（多选并集，可全部取消）">
+        <div
+          class="outcome-switch"
+          role="group"
+          aria-label="异常类型（多选并集，可全部取消）"
+        >
           <button
             v-for="item in surveyOutcomes"
             :key="item.id"
@@ -301,7 +358,10 @@ const optionCount = computed(() =>
             >{{ item.label }}
           </button>
         </div>
-        <span v-if="!selectedOutcomes.length" class="outcome-fallback" role="status"
+        <span
+          v-if="!selectedOutcomes.length"
+          class="outcome-fallback"
+          role="status"
           >按{{ outcomeLabel }}显示</span
         >
       </div>
@@ -309,7 +369,10 @@ const optionCount = computed(() =>
         ref="factorPicker"
         class="factor-picker"
         @keydown="navigateFactors"
-        @focusout="!factorPicker?.contains($event.relatedTarget as Node) && (menuOpen = false)"
+        @focusout="
+          !factorPicker?.contains($event.relatedTarget as Node) &&
+          (menuOpen = false)
+        "
       >
         <button
           ref="factorTrigger"
@@ -319,8 +382,14 @@ const optionCount = computed(() =>
           aria-controls="correlation-factor-menu"
           @click="toggleFactors"
         >
-          <span class="factor-trigger-label">比较因素</span><strong>{{ factorLabel }}</strong
-          ><span class="factor-chevron" :class="{ 'is-open': menuOpen }" aria-hidden="true">⌃</span>
+          <span class="factor-trigger-label">比较因素</span
+          ><strong>{{ factorLabel }}</strong
+          ><span
+            class="factor-chevron"
+            :class="{ 'is-open': menuOpen }"
+            aria-hidden="true"
+            >⌃</span
+          >
         </button>
         <div
           v-if="menuOpen"
@@ -335,7 +404,8 @@ const optionCount = computed(() =>
             :aria-pressed="factor === 'all'"
             @click="selectFactor('all')"
           >
-            <span>全部因素</span><span v-if="factor === 'all'" aria-hidden="true">✓</span>
+            <span>全部因素</span
+            ><span v-if="factor === 'all'" aria-hidden="true">✓</span>
           </button>
           <button
             v-for="group in associations"
