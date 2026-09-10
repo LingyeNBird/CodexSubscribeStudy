@@ -11,6 +11,26 @@
   color: var(--ink);
   overflow: hidden;
 }
+.association-card.is-muted {
+  color: color-mix(in srgb, var(--ink) 38%, transparent);
+}
+.association-card.is-muted .option-rates > span + span {
+  border-color: #26352e12;
+}
+.association-card.is-prerequisite {
+  border-color: var(--ink);
+  box-shadow:
+    inset 0 0 0 2px var(--ink),
+    3px 3px 0 var(--ink);
+}
+.premise-mark {
+  margin-left: auto;
+  padding: 2px 7px;
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  font-size: 0.64rem;
+  font-weight: 750;
+}
 .association-card:hover {
   border-color: var(--ink);
 }
@@ -115,7 +135,10 @@
 }
 .layout-list .option-summary,
 .layout-range .option-summary {
-  grid-template-columns: minmax(90px, 1fr) minmax(86px, 0.8fr) minmax(145px, 1.2fr);
+  grid-template-columns: minmax(90px, 1fr) minmax(86px, 0.8fr) minmax(
+      145px,
+      1.2fr
+    );
   align-items: center;
   gap: 12px;
   padding: 13px 15px;

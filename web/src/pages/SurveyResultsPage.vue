@@ -1,11 +1,20 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref } from "vue";
+import {
+  computed,
+  defineAsyncComponent,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+} from "vue";
 import SurveyFactorCard from "../components/survey/SurveyFactorCard.vue";
 import SurveyCorrelationPanel from "../components/survey/SurveyCorrelationPanel.vue";
 import UsagePattern from "../components/survey/UsagePattern.vue";
 import { surveyRequest, type SurveySummary } from "../data/surveyApi";
 import { calculateSurveyStatistics } from "../data/surveyStatistics";
-import { loadSubmissionMarker, submittedBefore } from "../data/surveyParticipation";
+import {
+  loadSubmissionMarker,
+  submittedBefore,
+} from "../data/surveyParticipation";
 
 const SurveyShareDialog = defineAsyncComponent(
   () => import("../components/survey/SurveyShareDialog.vue"),
@@ -14,8 +23,11 @@ const shareOpen = ref(false);
 const shareOutcomeMask = ref(1);
 
 const summary = ref<SurveySummary | null>(null);
+const correlationSummary = ref<SurveySummary | null>(null);
 const statistics = computed(() =>
-  summary.value ? calculateSurveyStatistics(summary.value) : null,
+  correlationSummary.value
+    ? calculateSurveyStatistics(correlationSummary.value)
+    : null,
 );
 const loading = ref(false);
 const error = ref("");
@@ -26,11 +38,15 @@ async function loadStatistics() {
   error.value = "";
   try {
     const result = await surveyRequest<SurveySummary>("statistics");
-    if (result.version !== 2) throw new Error("统计数据格式不匹配，请更新服务后刷新页面。");
+    if (result.version !== 2)
+      throw new Error("统计数据格式不匹配，请更新服务后刷新页面。");
     summary.value = result;
+    correlationSummary.value = result;
   } catch (cause) {
     summary.value = null;
-    error.value = cause instanceof Error ? cause.message : "统计加载失败，请重试。";
+    correlationSummary.value = null;
+    error.value =
+      cause instanceof Error ? cause.message : "统计加载失败，请重试。";
   } finally {
     loading.value = false;
   }
@@ -40,7 +56,9 @@ onMounted(() => {
   window.addEventListener("storage", loadSubmissionMarker);
   void loadStatistics();
 });
-onBeforeUnmount(() => window.removeEventListener("storage", loadSubmissionMarker));
+onBeforeUnmount(() =>
+  window.removeEventListener("storage", loadSubmissionMarker),
+);
 const metrics = computed(() => [
   {
     label: "问卷样本",
@@ -66,12 +84,20 @@ const metrics = computed(() => [
     note: "可与降智、封号同时出现",
     tone: "sun",
   },
-  { label: "报告正常", value: statistics.value?.normal, note: "填写时自述账号正常", tone: "mint" },
+  {
+    label: "报告正常",
+    value: statistics.value?.normal,
+    note: "填写时自述账号正常",
+    tone: "mint",
+  },
 ]);
 const statuses = computed(() => statistics.value?.statuses ?? []);
 const percentage = (count: number) =>
-  statistics.value?.total ? ((100 * count) / statistics.value.total).toFixed(1) : "0.0";
-const formatTime = (value: string) => new Date(value).toLocaleString("zh-CN", { hour12: false });
+  statistics.value?.total
+    ? ((100 * count) / statistics.value.total).toFixed(1)
+    : "0.0";
+const formatTime = (value: string) =>
+  new Date(value).toLocaleString("zh-CN", { hour12: false });
 </script>
 
 <template>
@@ -103,7 +129,9 @@ const formatTime = (value: string) => new Date(value).toLocaleString("zh-CN", { 
     </header>
     <nav class="research-tabs" aria-label="研究二页面">
       <a href="#/studies/chatgpt-account-survey">调查问卷</a>
-      <a href="#/studies/chatgpt-account-survey/results" aria-current="page">统计结果</a>
+      <a href="#/studies/chatgpt-account-survey/results" aria-current="page"
+        >统计结果</a
+      >
     </nav>
 
     <div class="results-mode" role="status">
@@ -117,9 +145,16 @@ const formatTime = (value: string) => new Date(value).toLocaleString("zh-CN", { 
                 ? "问卷统计结果"
                 : "尚未收到问卷"
         }}</strong>
-        <p>{{ error || "展示已提交问卷的汇总结果。你可以不填问卷直接浏览。" }}</p>
+        <p>
+          {{ error || "展示已提交问卷的汇总结果。你可以不填问卷直接浏览。" }}
+        </p>
       </div>
-      <button class="button small" type="button" :disabled="loading" @click="loadStatistics">
+      <button
+        class="button small"
+        type="button"
+        :disabled="loading"
+        @click="loadStatistics"
+      >
         {{ error ? "重试" : "刷新统计" }}
       </button>
     </div>
@@ -129,23 +164,36 @@ const formatTime = (value: string) => new Date(value).toLocaleString("zh-CN", { 
           statistics.range.lastSubmissionId
         }}</template
       >。
-      <template v-if="statistics.range.firstSubmittedAt && statistics.range.lastSubmittedAt">
+      <template
+        v-if="
+          statistics.range.firstSubmittedAt && statistics.range.lastSubmittedAt
+        "
+      >
         已知提交时间：{{ formatTime(statistics.range.firstSubmittedAt) }} 至
         {{ formatTime(statistics.range.lastSubmittedAt) }}（本地时间）。
       </template>
       <template v-if="statistics.range.unknownTimeCount"
-        >{{ statistics.range.unknownTimeCount }} 份历史问卷的提交时间未知。</template
+        >{{
+          statistics.range.unknownTimeCount
+        }}
+        份历史问卷的提交时间未知。</template
       >
     </p>
 
     <section class="result-metrics" aria-label="问卷统计概览">
-      <article v-for="metric in metrics" :key="metric.label" :class="metric.tone">
+      <article
+        v-for="metric in metrics"
+        :key="metric.label"
+        :class="metric.tone"
+      >
         <span>{{ metric.label }}</span>
         <strong>{{ metric.value ?? "—" }}<small>份</small></strong>
         <p>{{ metric.note }}</p>
       </article>
     </section>
-    <p class="results-caption">各异常状态可能重叠，不能直接相加作为异常总数。“—”表示无可用统计。</p>
+    <p class="results-caption">
+      各异常状态可能重叠，不能直接相加作为异常总数。“—”表示无可用统计。
+    </p>
 
     <section class="result-panel status-panel">
       <div class="result-panel-heading">
@@ -153,7 +201,9 @@ const formatTime = (value: string) => new Date(value).toLocaleString("zh-CN", { 
           <h2>账号情况分布</h2>
           <p>按状态组合统计，每份问卷归入一种组合。</p>
         </div>
-        <span class="pill plain">{{ statistics ? `${statistics.total} 份问卷` : "等待统计" }}</span>
+        <span class="pill plain">{{
+          statistics ? `${statistics.total} 份问卷` : "等待统计"
+        }}</span>
       </div>
       <template v-if="statistics && statistics.total > 0">
         <div class="status-strip" aria-hidden="true">
@@ -170,7 +220,8 @@ const formatTime = (value: string) => new Date(value).toLocaleString("zh-CN", { 
             <div>
               <span>{{ item.label }}</span
               ><strong
-                >{{ item.count }} <small>份 · {{ percentage(item.count) }}%</small></strong
+                >{{ item.count }}
+                <small>份 · {{ percentage(item.count) }}%</small></strong
               >
             </div>
           </li>
@@ -216,8 +267,9 @@ const formatTime = (value: string) => new Date(value).toLocaleString("zh-CN", { 
     <SurveyCorrelationPanel
       v-if="summary"
       v-show="analysisView === 'correlation'"
-      :factors="summary.factors"
+      :summary="summary"
       @outcome-change="shareOutcomeMask = $event"
+      @scope-change="correlationSummary = $event"
     />
     <section
       v-show="analysisView === 'distribution'"
@@ -243,7 +295,9 @@ const formatTime = (value: string) => new Date(value).toLocaleString("zh-CN", { 
             <h2>平时使用规律</h2>
             <p>各小时使用时间占比的平均值。</p>
           </div>
-          <span class="pill plain">{{ statistics.usagePattern.total }} 份有效回答</span>
+          <span class="pill plain"
+            >{{ statistics.usagePattern.total }} 份有效回答</span
+          >
         </div>
         <UsagePattern
           v-if="statistics.usagePattern.total"
@@ -273,11 +327,13 @@ const formatTime = (value: string) => new Date(value).toLocaleString("zh-CN", { 
     </section>
     <div class="results-bottom">
       <p>不填写问卷，也可以查看统计结果。</p>
-      <a class="button" href="#/studies/chatgpt-account-survey">返回调查问卷 →</a>
+      <a class="button" href="#/studies/chatgpt-account-survey"
+        >返回调查问卷 →</a
+      >
     </div>
     <SurveyShareDialog
-      v-if="shareOpen && summary"
-      :summary="summary"
+      v-if="shareOpen && correlationSummary"
+      :summary="correlationSummary"
       :outcome-mask="shareOutcomeMask"
       @close="shareOpen = false"
     />

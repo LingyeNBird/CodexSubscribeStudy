@@ -1,5 +1,14 @@
 export type SurveyOutcome = "degraded" | "banned" | "limited";
-export type StatusCounts = [number, number, number, number, number, number, number, number];
+export type StatusCounts = [
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+];
 export interface SurveyFactorSummary {
   id: string;
   title: string;
@@ -26,6 +35,10 @@ export interface SurveySummary {
     computedAt: string;
   };
 }
+export interface SurveyPrerequisite {
+  factor: string;
+  options: string[];
+}
 export interface SurveySubmission {
   status: string[];
   answers: Record<string, string[]>;
@@ -33,7 +46,10 @@ export interface SurveySubmission {
   usagePattern?: number[];
   ipRisk?: number;
 }
-export async function surveyRequest<T>(path: string, submission?: SurveySubmission): Promise<T> {
+export async function surveyRequest<T>(
+  path: string,
+  submission?: SurveySubmission,
+): Promise<T> {
   const response = await fetch(`/api/survey/${path}`, {
     method: submission ? "POST" : "GET",
     headers: submission ? { "Content-Type": "application/json" } : undefined,
@@ -45,4 +61,23 @@ export async function surveyRequest<T>(path: string, submission?: SurveySubmissi
     throw new Error("服务暂时不可用，请稍后重试。");
   }
   return response.json() as Promise<T>;
+}
+
+export async function querySurveyStatistics(
+  prerequisites: SurveyPrerequisite[],
+  signal?: AbortSignal,
+): Promise<SurveySummary> {
+  const response = await fetch("/api/survey/statistics/query", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prerequisites }),
+    credentials: "omit",
+    cache: "no-store",
+    signal,
+  });
+  if (!response.ok) {
+    if (response.status === 400) throw new Error("前提条件无效，请重新选择。");
+    throw new Error("暂时无法计算前提条件下的统计。");
+  }
+  return response.json() as Promise<SurveySummary>;
 }

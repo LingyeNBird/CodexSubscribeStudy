@@ -1,6 +1,17 @@
 .correlations {
   padding-bottom: calc(100px + env(safe-area-inset-bottom, 0px));
 }
+.premise-status {
+  display: flex;
+  justify-content: center;
+  margin: 16px 0 0;
+  padding: 10px 14px;
+  border: 1px solid #8eae97;
+  border-radius: 10px;
+  background: var(--mint);
+  font-size: 0.78rem;
+  font-weight: 650;
+}
 .category-toggle {
   display: inline-flex;
   align-items: center;
@@ -53,14 +64,6 @@
   cursor: pointer;
 }
 .outcome-check {
-  display: inline-grid;
-  place-items: center;
-  width: 13px;
-  height: 13px;
-  border: 1px solid currentColor;
-  border-radius: 3px;
-  font-size: 0.65rem;
-  line-height: 1;
   flex-shrink: 0;
 }
 .outcome-picker {
@@ -298,6 +301,10 @@
   }
 }
 .correlation-toolbar {
+  max-width: calc(100% - 20px);
+  overflow: visible;
+}
+.correlation-toolbar {
   position: fixed;
   z-index: 20;
   left: 50%;
@@ -313,6 +320,86 @@
   border-radius: 17px;
   background: var(--paper);
   box-shadow: 3px 4px 0 var(--ink);
+}
+.premise-context-menu {
+  position: fixed;
+  z-index: 80;
+  width: 176px;
+  padding: 6px;
+  border: var(--line);
+  border-radius: 11px;
+  background: var(--paper);
+  box-shadow: 3px 4px 0 var(--ink);
+}
+.premise-context-menu button {
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  text-align: left;
+  font-size: 0.82rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+.premise-context-menu button:hover,
+.premise-context-menu button:focus-visible {
+  background: var(--mint);
+}
+.premise-trigger {
+  min-width: 120px;
+  background: var(--mint);
+}
+.premise-menu {
+  width: min(340px, calc(100vw - 52px));
+}
+.premise-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px;
+  border-bottom: 1px solid #dbe2d7;
+}
+.premise-option > span {
+  display: grid;
+  min-width: 0;
+}
+.premise-option small {
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+.premise-option strong {
+  overflow-wrap: anywhere;
+  font-size: 0.82rem;
+}
+.premise-option button {
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border: 1px solid #a2b19b;
+  border-radius: 7px;
+  background: transparent;
+  cursor: pointer;
+}
+.premise-clear {
+  width: 100%;
+  margin-top: 6px;
+  padding: 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #8d3d31;
+  font-size: 0.76rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+.premise-option button:hover,
+.premise-option button:focus-visible,
+.premise-clear:hover,
+.premise-clear:focus-visible {
+  background: #edf2e8;
+  outline: none;
 }
 .correlation-toolbar .outcome-switch {
   flex-wrap: nowrap;
@@ -344,9 +431,9 @@
   flex: 1;
   text-align: left;
 }
-.factor-chevron {
-  font-size: 1.1rem;
-  line-height: 1;
+.factor-chevron,
+.factor-option-icon {
+  flex-shrink: 0;
 }
 .factor-chevron.is-open {
   transform: rotate(180deg);
