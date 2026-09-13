@@ -15,8 +15,9 @@ const metrics = [
   { id: "limited", label: "风控（限流）" },
 ] as const;
 
-const buckets = computed(() => trend(props.records, granularity.value).buckets);
-const unknown = computed(() => trend(props.records, granularity.value).unknown);
+const trendResult = computed(() => trend(props.records, granularity.value));
+const buckets = computed(() => trendResult.value.buckets);
+const unknown = computed(() => trendResult.value.unknown);
 const peak = computed(() =>
   buckets.value.reduce((max, bucket) => Math.max(max, bucket[metric.value]), 0),
 );

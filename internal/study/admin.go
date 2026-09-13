@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"slices"
@@ -26,6 +27,7 @@ const (
 	adminSessionMax  = 32
 	adminLoginWindow = time.Minute
 	adminLoginLimit  = 10
+	adminLoginKeys   = 1000
 	adminRecordLimit = 5000
 	adminBodyLimit   = 4 << 10
 )
@@ -64,40 +66,77 @@ func LoadAdminConfig(path string) (*AdminConfig, error) {
 	return &config, nil
 }
 
-type adminAuth struct {
-	config   AdminConfig
-	mu       sync.Mutex
-	sessions map[string]time.Time
+type loginAttempts struct {
 	window   time.Time
 	attempts int
 }
 
-func newAdminAuth(config AdminConfig) *adminAuth {
-	return &adminAuth{config: config, sessions: map[string]time.Time{}}
+type adminAuth struct {
+	config   AdminConfig
+	mu       sync.Mutex
+	sessions map[string]time.Time
+	logins   map[string]*loginAttempts
 }
 
-// throttled limits password guessing without touching stored credentials.
-func (a *adminAuth) throttled() bool {
+func newAdminAuth(config AdminConfig) *adminAuth {
+	return &adminAuth{config: config, sessions: map[string]time.Time{}, logins: map[string]*loginAttempts{}}
+}
+
+// clientKey identifies the caller for login throttling. It intentionally uses
+// only the TCP peer address, not client-supplied headers such as
+// X-Forwarded-For, which an attacker could vary to defeat the limit.
+func clientKey(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
+}
+
+// throttled limits password guessing per caller without touching stored
+// credentials, so one abusive client cannot lock out every other client.
+func (a *adminAuth) throttled(key string) bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if now := time.Now(); now.Sub(a.window) >= adminLoginWindow {
-		a.window, a.attempts = now, 0
+	state, ok := a.logins[key]
+	if !ok {
+		return false
 	}
-	return a.attempts >= adminLoginLimit
+	if time.Since(state.window) >= adminLoginWindow {
+		delete(a.logins, key)
+		return false
+	}
+	return state.attempts >= adminLoginLimit
 }
 
 // verify always evaluates both comparisons so that a wrong username and a wrong
 // password cost the same work and return the same answer.
-func (a *adminAuth) verify(username, password string) bool {
+func (a *adminAuth) verify(key, username, password string) bool {
 	user := subtle.ConstantTimeCompare([]byte(username), []byte(a.config.Username)) == 1
 	secret := subtle.ConstantTimeCompare([]byte(password), []byte(a.config.Password)) == 1
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	a.attempts++
 	if user && secret {
-		a.attempts = 0
+		delete(a.logins, key)
+		return true
 	}
-	return user && secret
+	state, ok := a.logins[key]
+	now := time.Now()
+	if !ok || now.Sub(state.window) >= adminLoginWindow {
+		if !ok && len(a.logins) >= adminLoginKeys {
+			// Bound memory under many distinct source addresses by dropping an
+			// arbitrary existing entry; losing a few attempts of throttling is
+			// preferable to unbounded growth.
+			for other := range a.logins {
+				delete(a.logins, other)
+				break
+			}
+		}
+		state = &loginAttempts{window: now}
+		a.logins[key] = state
+	}
+	state.attempts++
+	return false
 }
 
 func (a *adminAuth) open() (string, error) {
@@ -192,7 +231,8 @@ func (s *Server) serveAdminSession(w http.ResponseWriter, r *http.Request) {
 	case http.MethodGet:
 		respond(w, http.StatusOK, map[string]bool{"configured": true, "authenticated": s.adminGranted(r)})
 	case http.MethodPost:
-		if s.admin.throttled() {
+		key := clientKey(r)
+		if s.admin.throttled(key) {
 			w.Header().Set("Retry-After", "60")
 			fail(w, http.StatusTooManyRequests, "rate_limited")
 			return
@@ -208,7 +248,7 @@ func (s *Server) serveAdminSession(w http.ResponseWriter, r *http.Request) {
 			fail(w, http.StatusBadRequest, "invalid_credentials")
 			return
 		}
-		if !s.admin.verify(credentials.Username, credentials.Password) {
+		if !s.admin.verify(key, credentials.Username, credentials.Password) {
 			fail(w, http.StatusUnauthorized, "invalid_credentials")
 			return
 		}

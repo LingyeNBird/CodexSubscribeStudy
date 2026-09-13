@@ -34,11 +34,20 @@ func adminCall(s *Server, method, path, body string, cookie *http.Cookie) *httpt
 
 func adminLogin(t *testing.T, s *Server, password string) (*http.Cookie, *httptest.ResponseRecorder) {
 	t.Helper()
+	return adminLoginFrom(t, s, password, "192.0.2.1:1234")
+}
+
+func adminLoginFrom(t *testing.T, s *Server, password, peer string) (*http.Cookie, *httptest.ResponseRecorder) {
+	t.Helper()
 	body, err := json.Marshal(map[string]string{"username": "root", "password": password})
 	if err != nil {
 		t.Fatal(err)
 	}
-	response := adminCall(s, http.MethodPost, "/api/admin/session", string(body), nil)
+	request := httptest.NewRequest(http.MethodPost, "/api/admin/session", strings.NewReader(string(body)))
+	request.Header.Set("Content-Type", "application/json")
+	request.RemoteAddr = peer
+	response := httptest.NewRecorder()
+	s.ServeHTTP(response, request)
 	for _, cookie := range response.Result().Cookies() {
 		if cookie.Name == adminCookieName {
 			return cookie, response
@@ -135,6 +144,23 @@ func TestAdminLoginThrottlesGuessing(t *testing.T) {
 	cookie, response := adminLogin(t, server, adminPassword)
 	if response.Code != http.StatusTooManyRequests || cookie != nil {
 		t.Fatalf("guessing not throttled: %d", response.Code)
+	}
+}
+
+func TestAdminLoginThrottleIsPerClient(t *testing.T) {
+	server, _ := adminTestServer(t)
+	for range adminLoginLimit {
+		if _, response := adminLoginFrom(t, server, "wrong", "203.0.113.9:1"); response.Code != http.StatusUnauthorized {
+			t.Fatalf("unexpected failure mode: %d", response.Code)
+		}
+	}
+	if _, response := adminLoginFrom(t, server, "wrong", "203.0.113.9:1"); response.Code != http.StatusTooManyRequests {
+		t.Fatalf("attacker not throttled: %d", response.Code)
+	}
+	// A different client must not be locked out by the attacker's attempts.
+	cookie, response := adminLoginFrom(t, server, adminPassword, "198.51.100.7:1")
+	if response.Code != http.StatusOK || cookie == nil {
+		t.Fatalf("innocent client wrongly throttled: %d", response.Code)
 	}
 }
 

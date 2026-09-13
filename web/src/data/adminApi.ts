@@ -50,6 +50,8 @@ async function adminRequest<T>(path: string, init?: RequestInit): Promise<T> {
   if (response.status === 404) throw new AdminDisabled("服务未启用管理面板。");
   if (response.status === 401) throw new AdminUnauthorized("登录状态已失效。");
   if (response.status === 429) throw new Error("尝试次数过多，请稍后再试。");
+  if (response.status >= 400 && response.status < 500)
+    throw new Error("请求参数有误，请检查后重试。");
   if (!response.ok) throw new Error("服务暂时不可用，请稍后重试。");
   return response.json() as Promise<T>;
 }

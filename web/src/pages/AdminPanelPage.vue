@@ -278,6 +278,9 @@ function handleError(error: unknown) {
     return;
   }
   notice.value = error instanceof Error ? error.message : "请求失败。";
+  // A failure here (e.g. a transient network error) must not leave the login
+  // button stuck reading "检查中…" forever.
+  if (state.value !== "ready") state.value = "locked";
 }
 
 async function load() {

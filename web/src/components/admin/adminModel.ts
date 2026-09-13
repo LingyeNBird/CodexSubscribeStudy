@@ -408,6 +408,7 @@ export function cohortRows(
   catalog: AdminCatalog | null,
 ): { title: string; rows: CohortRow[] }[] {
   const inA = new Set(groupA.map((record) => record.id));
+  const inB = new Set(groupB.map((record) => record.id));
   const union = [...groupA, ...groupB.filter((record) => !inA.has(record.id))];
   return (catalog?.definitions ?? []).map((question: AdminQuestion) => {
     const rows = optionsFor(union, `question:${question.key}`, catalog).map(
@@ -421,10 +422,13 @@ export function cohortRows(
           // Records that skipped the question are excluded from both sides.
           if (values.length === 1 && values[0] === UNAVAILABLE) continue;
           const hit = values.includes(option.value);
+          // A record can belong to both cohorts when B is a custom filter
+          // rather than A's complement, so membership is checked independently.
           if (inA.has(record.id)) {
             aTotal++;
             if (hit) aCount++;
-          } else {
+          }
+          if (inB.has(record.id)) {
             bTotal++;
             if (hit) bCount++;
           }
