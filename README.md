@@ -37,6 +37,47 @@ docker compose up -d --build
 | `STUDY_DB` | `data/study.sqlite` | SQLite 数据库路径；Compose 已设置为 `/data/study.sqlite` |
 | `STUDY_LEGACY_DB` | SQLite 文件同目录下的 `study.db` | 首次启动时尝试导入的旧 bbolt 文件；文件不存在则正常创建新库，显式设为空可禁用自动导入 |
 | `STUDY_MAX_REPORTERS` | `10000` | GPT-6 研究贡献身份数上限 |
+| `STUDY_ADMIN_CONFIG` | `config/admin.json` | 管理面板凭据文件路径；Compose 已设置为 `/config/admin.json`。文件不存在时不启动管理面板 |
+
+## 管理面板
+
+管理面板路径：`#/studies/chatgpt-account-survey/adminPanel`。它是独立的全屏工具，不显示站点的导航与页脚，按 `config/admin.json` 里的凭据登录；未配置凭据时 `/api/admin/*` 一律返回 404，面板不可用。
+
+面板分成左侧常驻条件栏和右侧四个视图，条件在两个视图之间共享：
+
+| 视图 | 用途 |
+| --- | --- |
+| 明细表 | 一行一份问卷，列可增删、表头可排序，点任意一行从右侧打开详情 |
+| 交叉透视 | 任选两个维度（含「异常状态」「提交月份」），看组合分布，可切换份数、占行、占列 |
+| 两组对比 | A 组与 B 组逐题比较占比差值，并给出 φ 系数 |
+| 时间 | 按天、周、月看问卷量与各异常状态占比，点柱子把该时间段加进条件 |
+
+条件栏支持异常状态、提交时间、任意多道题的「包含 / 排除」条件（同题内为“或”，题与题之间为“且”）、全文搜索（含补充文本与备注）和标签。完整条件会写进地址栏，可以直接收藏或分享给协作者。
+
+列表显示填写者提交的**原始值**：账号地区按代码转成地区名，存活时长、分发人数、最高并发、IP 风险分数按填写时的数值显示。统计接口使用的分组只在需要时以「统计口径」标注，不会替代原值。
+
+可以给任意问卷加标签和备注，也可以勾选多行批量加标签。标签只写入管理端自己的 `survey_annotations` 表，不改动问卷原文，也不会进入公开统计。
+
+导出支持 CSV 与 JSON，范围默认是当前筛选结果（勾选行时只导出选中的问卷）。CSV 一行一份、每题一列，带 UTF-8 BOM，Excel 直接打开不乱码；JSON 保留原始值、统计口径和存储原文。
+
+启用方式：
+
+```sh
+cp config/admin.json.sample config/admin.json
+# 修改 username 与 password
+```
+
+`config/admin.json` 已加入 `.gitignore` 和 `.dockerignore`，只有示例文件会进入版本库。字段如下：
+
+```json
+{ "username": "admin", "password": "换成你自己的强密码" }
+```
+
+Docker Compose 已经把该文件以只读方式挂载进容器（`./config/admin.json:/config/admin.json:ro`）。容器以非 root 用户 10001 运行，宿主机上的配置文件需要可读，例如 `chmod 644 config/admin.json`；否则容器启动后管理面板会处于禁用状态并在日志中提示。
+
+该页面不会出现在导航中，也不参与站点路由的其他分支。它通过三种方式避免被搜索引擎收录：`robots.txt` 的 `Disallow: /api/admin/`、管理接口的 `X-Robots-Tag: noindex, nofollow`、以及页面运行时插入的 `<meta name="robots" content="noindex,nofollow">`。**地址本身不是安全边界，凭据才是。**
+
+修改凭据后重启服务即可生效；已登录的会话保存在内存中，重启后需要重新登录。登录窗口为 1 分钟最多 10 次尝试，会话空闲 2 小时过期。标签与备注保存在数据库里，随 `-backup` 快照一起备份。
 
 ## 本地开发
 
@@ -120,6 +161,7 @@ STUDY_DB=data/imported.sqlite go run ./cmd/study -import-bbolt /path/to/study.db
 - `survey_answers`、`survey_details`：展开 JSON 的只读查询视图，可用于按题目、选项和补充信息查询；不是重复保存的数据。
 - `evidence_identities`、`evidence_batches`：贡献身份和证据批次。修订号以十进制文本保存，完整保留协议的 uint64 范围。
 - `survey_statistics`：带统计截止位置的增量缓存；`legacy_imports`：旧库导入记录。
+- `survey_annotations`：管理面板的标签与备注，按问卷编号关联，可为空；与问卷原文、公开统计完全分离。
 
 ## 文档
 

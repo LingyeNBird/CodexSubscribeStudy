@@ -6,3 +6,4 @@ data
 review-output
 *.db
 .env
+config/admin.json

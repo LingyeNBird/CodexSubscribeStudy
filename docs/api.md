@@ -98,3 +98,59 @@ log_evidence, gpt6_quota, information
 `factor` 和 `options` 必须来自当前问卷目录。相同因素内的选项采用“或”，不同因素之间采用“且”；未回答前提因素的问卷不匹配。接口最多接受12个因素、合计32个选项，从 SQLite 原始问卷计算条件样本，不返回单份问卷。至少需要一个前提，未知、重复或空选项返回400。
 
 问卷最多保存100000份。备份及数据库导入方式见 [部署说明](../README.md)。
+
+## 管理面板 API
+
+管理面板用于查看去标识化的逐份问卷明细，需要先登录。部署方在 `config/admin.json` 提供 `username` 和 `password`；文件缺失时以下路径全部返回404，避免以默认凭据意外开放。凭据读取与部署方式见 [部署说明](../README.md)。
+
+| 路径 | 用途 |
+| --- | --- |
+| GET /api/admin/session | 查询当前会话是否已登录 |
+| POST /api/admin/session | 用 `{"username","password"}` 登录，成功后下发会话 Cookie |
+| DELETE /api/admin/session | 退出登录并作废当前会话 |
+| GET /api/admin/catalog | 题目目录 `choices` 与 `definitions` |
+| GET /api/admin/submissions | 逐份问卷明细 |
+| PUT /api/admin/annotations | 写入标签与备注 |
+
+会话 Cookie 为 `study_admin`，`HttpOnly`、`SameSite=Strict`、`Path=/api/admin`，在 HTTPS 直连时附带 `Secure`。令牌为服务端随机值，空闲2小时过期，仅在内存中保存，服务重启即失效。同一 IP 之外的登录窗口为每分钟10次尝试，超出返回429。
+
+`GET /api/admin/submissions` 按提交编号从新到旧返回，最多5000份：
+
+```json
+{
+  "total": 45,
+  "returned": 45,
+  "truncated": false,
+  "records": [
+    {
+      "id": 45,
+      "submittedAt": "2026-09-09T15:41:28.017Z",
+      "status": ["降智"],
+      "answers": { "plans": ["Plus"] },
+      "details": { "country": "SG", "concurrency": "15" },
+      "raw": { "country": ["SG"], "concurrency": ["15"] },
+      "normalized": { "country": ["其他国家或地区"], "concurrency": ["11 及以上"] },
+      "usagePattern": [0, 0, 1],
+      "ipRisk": 20,
+      "tags": ["可疑"],
+      "note": "时长与地区对不上"
+    }
+  ]
+}
+```
+
+`raw` 是填写者实际提交的值，`normalized` 是统计接口使用的同一个换算结果。两者对账号地区、出口地区、存活时长、分发人数、最高并发和数值 `ipRisk` 并不相同：统计会把这些原始值合并成分组，`raw` 保留原值，管理面板以 `raw` 展示和筛选，避免把 `SG`、`TR` 之类的具体取值隐藏成“其他国家或地区”。`answers`、`details` 仍是数据库中的原文，`normalized` 仅供对照。
+
+具体换算为：地区码按 ISO alpha-2 映射到目录选项，未知代码归入“其他国家或地区”；存活时长按天换算（小时÷24、星期×7、月×30、年÷365）落入目录区间；人数与并发按数值落入对应区间；`ipRisk` 按 0–14、15–24、25–39、40–49、50–69、70–100 分组。
+
+接口只读取已存储的字段，不返回 IP、账号、API Key 或任何访问日志。所有响应带 `X-Robots-Tag: noindex, nofollow`。
+
+`PUT /api/admin/annotations` 写入管理端的标签与备注，可以一次作用于多份问卷：
+
+```json
+{ "ids": [12, 15], "addTags": ["可疑"], "removeTags": ["待跟进"], "note": "地区与时长对不上" }
+```
+
+`ids` 必填，最多500个；`addTags`、`removeTags` 合计最多12个，每个标签最多24个字符；`note` 省略表示不改动，传空字符串表示清空，最多2000个字符。三者至少要提供一项。标签与备注都清空后该行会被删除，不会留下空记录。不存在的问卷编号会被忽略，不会产生孤立记录。成功返回 `{"updated": N}`；请求不合法返回400，未登录返回401。
+
+标签与备注只写入 `survey_annotations` 表，问卷原文不会被修改，也不会出现在 `GET /api/survey/statistics`、`POST /api/survey/statistics/query` 或任何公开响应中。

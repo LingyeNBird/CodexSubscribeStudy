@@ -3,9 +3,14 @@ import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import type { Study } from "./types";
 import AccountSurvey from "./AccountSurvey.vue";
 import SurveyResultsPage from "./pages/SurveyResultsPage.vue";
+import AdminPanelPage from "./pages/AdminPanelPage.vue";
 
 const study = ref<Study | null>(null);
-const route = ref(location.hash.slice(1) || "/");
+/** The panel keeps its state in a `?s=` suffix, which is not part of the route. */
+function currentRoute() {
+  return (location.hash.slice(1) || "/").split("?")[0];
+}
+const route = ref(currentRoute());
 const loading = ref(true);
 const refreshing = ref(false);
 const error = ref("");
@@ -14,9 +19,15 @@ const controller = new AbortController();
 let timer: ReturnType<typeof setInterval> | undefined;
 const detail = computed(() => route.value === "/studies/gpt6-components");
 const surveyRoute = computed(() =>
-  ["/studies/chatgpt-account-survey", "/studies/chatgpt-account-survey/results"].includes(
-    route.value,
-  ),
+  [
+    "/studies/chatgpt-account-survey",
+    "/studies/chatgpt-account-survey/results",
+  ].includes(route.value),
+);
+// The administrator panel is excluded from search engines, so it stays off the
+// shared survey route handling and renders its own meta robots directive.
+const adminRoute = computed(
+  () => route.value === "/studies/chatgpt-account-survey/adminPanel",
 );
 const factorCause = ref("cache_read");
 import HomePage from "./pages/HomePage.vue";
@@ -56,11 +67,14 @@ async function load() {
   }
 }
 function navigate() {
-  route.value = location.hash.slice(1) || "/";
+  route.value = currentRoute();
   window.scrollTo({ top: 0, behavior: "instant" });
 }
 onMounted(() => {
   window.addEventListener("hashchange", navigate);
+  // The administrator panel fetches its own data and must not call the public
+  // study endpoint or poll in the background.
+  if (adminRoute.value) return;
   void load();
   timer = setInterval(() => {
     if (document.visibilityState === "visible") void load();
@@ -74,63 +88,83 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <a class="skip" href="#main">跳到正文</a>
-  <div class="site-shell">
-    <header class="topbar">
-      <a class="brand" href="#/" aria-label="共研首页"
-        ><span class="brand-icon" aria-hidden="true"><i></i><i></i><i></i></span
-        ><span>共研</span></a
-      >
-      <nav aria-label="主导航">
-        <a href="#/" :aria-current="route === '/' || detail || surveyRoute ? 'page' : undefined"
-          >研究项目</a
-        ><a href="#/method" :aria-current="route === '/method' ? 'page' : undefined">研究方法</a
-        ><a href="#/privacy" :aria-current="route === '/privacy' ? 'page' : undefined"
-          >隐私与参与</a
+  <AdminPanelPage v-if="adminRoute" />
+  <template v-else>
+    <a class="skip" href="#main">跳到正文</a>
+    <div class="site-shell">
+      <header class="topbar">
+        <a class="brand" href="#/" aria-label="共研首页"
+          ><span class="brand-icon" aria-hidden="true"
+            ><i></i><i></i><i></i></span
+          ><span>共研</span></a
         >
-      </nav>
-      <a
-        class="source-link"
-        href="https://github.com/LingyeNBird/CodexSubscribeStudy"
-        target="_blank"
-        rel="noreferrer"
-        >开源代码 ↗</a
-      >
-    </header>
-    <main id="main">
-      <div v-if="error && (route === '/' || detail)" class="banner error" role="alert">
-        <span>{{ error }}</span
-        ><button @click="load" :disabled="refreshing">重新获取</button>
-      </div>
-      <HomePage v-if="route === '/'" :study="study" :loading="loading" />
-      <template v-else-if="surveyRoute">
-        <KeepAlive include="AccountSurvey">
-          <AccountSurvey v-if="route === '/studies/chatgpt-account-survey'" />
-          <SurveyResultsPage v-else />
-        </KeepAlive>
-      </template>
-      <StudyPage
-        v-else-if="detail"
-        :study="study"
-        :loading="loading"
-        :refreshing="refreshing"
-        :last-refresh="lastRefresh"
-        v-model:factor-cause="factorCause"
-        @refresh="load"
-      />
-      <MethodPage v-else-if="route === '/method'" />
-      <PrivacyPage v-else-if="route === '/privacy'" />
-      <section v-else class="empty-evidence">
-        <h1>这个页面还不存在。</h1>
-        <a class="button" href="#/">回到研究首页</a>
-      </section>
-    </main>
-    <footer>
-      <a class="footer-brand" href="#/">共研 <span>Codex Subscribe Study</span></a>
-      <p>证据可以汇聚，不确定性不该被隐藏。</p>
-      <a href="#/privacy">去标识化 · 长期保留</a>
-    </footer>
-  </div>
+        <nav aria-label="主导航">
+          <a
+            href="#/"
+            :aria-current="
+              route === '/' || detail || surveyRoute ? 'page' : undefined
+            "
+            >研究项目</a
+          ><a
+            href="#/method"
+            :aria-current="route === '/method' ? 'page' : undefined"
+            >研究方法</a
+          ><a
+            href="#/privacy"
+            :aria-current="route === '/privacy' ? 'page' : undefined"
+            >隐私与参与</a
+          >
+        </nav>
+        <a
+          class="source-link"
+          href="https://github.com/LingyeNBird/CodexSubscribeStudy"
+          target="_blank"
+          rel="noreferrer"
+          >开源代码 ↗</a
+        >
+      </header>
+      <main id="main">
+        <div
+          v-if="error && (route === '/' || detail)"
+          class="banner error"
+          role="alert"
+        >
+          <span>{{ error }}</span
+          ><button @click="load" :disabled="refreshing">重新获取</button>
+        </div>
+        <HomePage v-if="route === '/'" :study="study" :loading="loading" />
+        <template v-else-if="surveyRoute">
+          <KeepAlive include="AccountSurvey">
+            <AccountSurvey v-if="route === '/studies/chatgpt-account-survey'" />
+            <SurveyResultsPage v-else />
+          </KeepAlive>
+        </template>
+        <AdminPanelPage v-else-if="adminRoute" />
+        <StudyPage
+          v-else-if="detail"
+          :study="study"
+          :loading="loading"
+          :refreshing="refreshing"
+          :last-refresh="lastRefresh"
+          v-model:factor-cause="factorCause"
+          @refresh="load"
+        />
+        <MethodPage v-else-if="route === '/method'" />
+        <PrivacyPage v-else-if="route === '/privacy'" />
+        <section v-else class="empty-evidence">
+          <h1>这个页面还不存在。</h1>
+          <a class="button" href="#/">回到研究首页</a>
+        </section>
+      </main>
+      <footer>
+        <a class="footer-brand" href="#/"
+          >共研 <span>Codex Subscribe Study</span></a
+        >
+        <p>证据可以汇聚，不确定性不该被隐藏。</p>
+        <a href="#/privacy">去标识化 · 长期保留</a>
+      </footer>
+    </div>
+  </template>
 </template>
 
 <style scoped src="./App.css"></style>

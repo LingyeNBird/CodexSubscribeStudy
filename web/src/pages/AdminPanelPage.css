@@ -1,0 +1,227 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+  background: #f5f4ec;
+}
+.panel-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 10px 18px;
+  border-bottom: var(--line);
+  background: var(--paper);
+}
+.panel-title {
+  font-size: 0.92rem;
+  letter-spacing: 0.02em;
+}
+.panel-tabs {
+  display: flex;
+  gap: 4px;
+}
+.panel-tab {
+  padding: 6px 14px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  font: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+.panel-tab:hover {
+  background: #eaf2e5;
+}
+.panel-tab.is-on {
+  background: var(--mint);
+  border-color: #8eae97;
+  font-weight: 650;
+}
+.panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+.panel-count {
+  font-size: 0.8rem;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+.panel-btn {
+  padding: 7px 12px;
+  border: 1px solid #a2b19b;
+  border-radius: 8px;
+  background: var(--paper);
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+.panel-btn:hover {
+  background: #eaf2e5;
+}
+.panel-btn.is-primary {
+  background: var(--mint);
+  font-weight: 650;
+}
+.panel-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.panel-notice {
+  margin: 0;
+  padding: 9px 18px;
+  background: var(--sun);
+  font-size: 0.8rem;
+  font-weight: 650;
+}
+.panel-login,
+.panel-disabled {
+  display: grid;
+  gap: 14px;
+  width: min(380px, calc(100vw - 40px));
+  margin: 12vh auto;
+  padding: 26px;
+  border: var(--line);
+  border-radius: 14px;
+  background: var(--paper);
+}
+.panel-login h1,
+.panel-disabled h1 {
+  margin: 0;
+  font-size: 1.2rem;
+}
+.panel-login label {
+  display: grid;
+  gap: 5px;
+  font-size: 0.8rem;
+  font-weight: 650;
+}
+.panel-login input {
+  padding: 10px 12px;
+  border: 1px solid #a2b19b;
+  border-radius: 9px;
+  background: var(--paper);
+  font: inherit;
+  font-size: 0.88rem;
+}
+.panel-disabled p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+.panel-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 318px minmax(0, 1fr);
+}
+.panel-body.has-drawer {
+  grid-template-columns: 318px minmax(0, 1fr) minmax(330px, 420px);
+}
+.panel-rail {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+  border-right: var(--line);
+  background: #eef1e8;
+}
+.rail-mode {
+  display: flex;
+  gap: 4px;
+  padding: 10px 14px 0;
+}
+.rail-mode button {
+  flex: 1;
+  padding: 6px 0;
+  border: 1px solid #a2b19b;
+  border-radius: 8px;
+  background: var(--paper);
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+.rail-mode button.is-on {
+  background: var(--mint);
+  font-weight: 650;
+}
+.rail-banner {
+  margin: 10px 14px 0;
+  padding: 8px 10px;
+  border-left: 3px solid #8eae97;
+  border-radius: 6px;
+  background: #f6f8f2;
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+.rail-banner.is-quiet {
+  border-left-color: #b3a8d6;
+  color: var(--muted);
+}
+.rail-banner button {
+  display: block;
+  margin-top: 6px;
+  padding: 4px 10px;
+  border: 1px solid #a2b19b;
+  border-radius: 999px;
+  background: var(--paper);
+  font: inherit;
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+.panel-main {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  min-width: 0;
+  min-height: 0;
+}
+.panel-main > :first-child {
+  min-height: 0;
+  overflow: auto;
+  padding: 16px 18px;
+}
+.panel-stack {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 10px;
+}
+.panel-stack > :last-child {
+  min-height: 0;
+}
+.panel-batch {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 9px 12px;
+  border: 1px solid #8eae97;
+  border-radius: 10px;
+  background: var(--mint);
+  font-size: 0.8rem;
+}
+.panel-batch select {
+  padding: 6px 10px;
+  border: 1px solid #a2b19b;
+  border-radius: 8px;
+  background: var(--paper);
+  font: inherit;
+  font-size: 0.78rem;
+}
+.panel-foot {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 8px 18px;
+  border-top: 1px solid #d5ddcf;
+  background: var(--paper);
+  color: var(--muted);
+  font-size: 0.74rem;
+}
+.panel-hint {
+  flex: 1;
+  min-width: 200px;
+}

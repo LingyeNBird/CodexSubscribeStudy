@@ -1,0 +1,162 @@
+.table-wrap {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 8px;
+  min-width: 0;
+  min-height: 0;
+}
+.table-bar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.table-cols {
+  display: flex;
+  gap: 6px;
+}
+.table-btn {
+  padding: 6px 11px;
+  border: 1px solid #a2b19b;
+  border-radius: 8px;
+  background: var(--paper);
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+.table-btn:hover {
+  background: #eaf2e5;
+}
+.table-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.74rem;
+}
+.table-settings {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 6px);
+  left: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 4px 12px;
+  width: min(680px, calc(100vw - 60px));
+  max-height: 340px;
+  overflow-y: auto;
+  padding: 12px;
+  border: var(--line);
+  border-radius: 12px;
+  background: var(--paper);
+  box-shadow: 3px 4px 0 var(--ink);
+}
+.table-settings .table-note {
+  grid-column: 1 / -1;
+  margin-top: 6px;
+  font-weight: 650;
+}
+.table-setting label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+.table-scroll {
+  overflow: auto;
+  min-height: 0;
+  border: var(--line);
+  border-radius: 12px;
+  background: var(--paper);
+}
+.table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.8rem;
+}
+.table th,
+.table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid #e2e7dd;
+  text-align: left;
+  vertical-align: top;
+  white-space: nowrap;
+}
+.table.is-cozy th,
+.table.is-cozy td {
+  padding: 13px 12px;
+}
+.table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #eef1e8;
+  border-bottom: 1px solid #ccd6c5;
+}
+.table-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0;
+}
+.table-sort span {
+  color: #427b62;
+  font-size: 0.66rem;
+}
+.table-check {
+  width: 34px;
+  text-align: center;
+}
+.table tbody tr:hover td {
+  background: #f3f7ee;
+}
+.table tbody td:not(.table-check) {
+  cursor: pointer;
+}
+.table-pill {
+  display: inline-block;
+  margin-right: 4px;
+  padding: 1px 8px;
+  border: 1px solid #a2b19b;
+  border-radius: 999px;
+  background: var(--mint);
+  font-size: 0.7rem;
+  font-weight: 650;
+}
+.table-pill.is-tag {
+  background: var(--violet);
+  border-color: #b3a8d6;
+}
+.table-hint {
+  margin-left: 3px;
+  color: var(--muted);
+  font-style: normal;
+  font-size: 0.7rem;
+}
+.table-empty {
+  color: #9aa89f;
+}
+.table-note-cell {
+  display: inline-block;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+  color: var(--muted);
+}
+.table-none {
+  margin: 0;
+  padding: 26px;
+  border: var(--line);
+  border-radius: 12px;
+  background: var(--paper);
+  text-align: center;
+  color: var(--muted);
+}

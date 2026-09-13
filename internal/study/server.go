@@ -18,6 +18,7 @@ import (
 type Server struct {
 	store     *Store
 	assets    fs.FS
+	admin     *adminAuth
 	mu        sync.Mutex
 	cached    Result
 	cachedAt  time.Time
@@ -26,8 +27,24 @@ type Server struct {
 	sem       chan struct{}
 }
 
-func NewServer(store *Store, assets fs.FS) *Server {
-	return &Server{store: store, assets: assets, tokens: 60, lastToken: time.Now(), sem: make(chan struct{}, 16)}
+// Option enables optional server features without changing existing callers.
+type Option func(*Server)
+
+// WithAdmin enables the administrator panel for the supplied credentials.
+func WithAdmin(config *AdminConfig) Option {
+	return func(s *Server) {
+		if config != nil {
+			s.admin = newAdminAuth(*config)
+		}
+	}
+}
+
+func NewServer(store *Store, assets fs.FS, options ...Option) *Server {
+	server := &Server{store: store, assets: assets, tokens: 60, lastToken: time.Now(), sem: make(chan struct{}, 16)}
+	for _, option := range options {
+		option(server)
+	}
+	return server
 }
 
 func (s *Server) result() (Result, error) {
@@ -90,6 +107,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	case "/api/survey/statistics/query":
 		s.serveSurveyQuery(w, r)
+		return
+	case "/api/admin/session", "/api/admin/catalog", "/api/admin/submissions", "/api/admin/annotations":
+		s.serveAdmin(w, r)
 		return
 	case "/healthz":
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {

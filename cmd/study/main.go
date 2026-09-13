@@ -82,7 +82,19 @@ func run() error {
 		log.Print("SQLite backup completed")
 		return nil
 	}
-	handler := study.NewServer(store, web.Assets())
+	adminPath := env("STUDY_ADMIN_CONFIG", "config/admin.json")
+	admin, err := study.LoadAdminConfig(adminPath)
+	if err != nil {
+		return fmt.Errorf("load admin config: %w", err)
+	}
+	options := []study.Option{}
+	if admin == nil {
+		log.Printf("administrator panel disabled: no credentials at %s", adminPath)
+	} else {
+		options = append(options, study.WithAdmin(admin))
+		log.Print("administrator panel enabled")
+	}
+	handler := study.NewServer(store, web.Assets(), options...)
 	server := &http.Server{Addr: env("STUDY_ADDR", ":8080"), Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 8192, ErrorLog: log.New(io.Discard, "", 0)}
 	// TLS and network peers see IPs. The application deliberately has no access
 	// log; configure the deployment proxy/CDN consistently with the privacy notice.

@@ -8,8 +8,12 @@ services:
       STUDY_DB: /data/study.sqlite
       STUDY_LEGACY_DB: /data/study.db
       STUDY_MAX_REPORTERS: "10000"
+      # Copy config/admin.json.sample to config/admin.json and keep it readable
+      # (chmod 644) so the unprivileged container user can read the credentials.
+      STUDY_ADMIN_CONFIG: /config/admin.json
     volumes:
       - study-data:/data
+      - ./config/admin.json:/config/admin.json:ro
     security_opt:
       - no-new-privileges:true
     read_only: true
