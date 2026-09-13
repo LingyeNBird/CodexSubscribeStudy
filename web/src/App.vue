@@ -4,6 +4,7 @@ import type { Study } from "./types";
 import AccountSurvey from "./AccountSurvey.vue";
 import SurveyResultsPage from "./pages/SurveyResultsPage.vue";
 import AdminPanelPage from "./pages/AdminPanelPage.vue";
+import PivotPanelPage from "./pages/PivotPanelPage.vue";
 
 const study = ref<Study | null>(null);
 /** The panel keeps its state in a `?s=` suffix, which is not part of the route. */
@@ -28,6 +29,11 @@ const surveyRoute = computed(() =>
 // shared survey route handling and renders its own meta robots directive.
 const adminRoute = computed(
   () => route.value === "/studies/chatgpt-account-survey/adminPanel",
+);
+// The public pivot panel is likewise excluded from search engines (see
+// PivotPanelPage.vue) and fetches its own data, so it is handled the same way.
+const pivotRoute = computed(
+  () => route.value === "/studies/chatgpt-account-survey/pivot",
 );
 const factorCause = ref("cache_read");
 import HomePage from "./pages/HomePage.vue";
@@ -72,9 +78,9 @@ function navigate() {
 }
 onMounted(() => {
   window.addEventListener("hashchange", navigate);
-  // The administrator panel fetches its own data and must not call the public
-  // study endpoint or poll in the background.
-  if (adminRoute.value) return;
+  // The administrator and pivot panels fetch their own data and must not call
+  // the public study endpoint or poll in the background.
+  if (adminRoute.value || pivotRoute.value) return;
   void load();
   timer = setInterval(() => {
     if (document.visibilityState === "visible") void load();
@@ -89,6 +95,7 @@ onBeforeUnmount(() => {
 
 <template>
   <AdminPanelPage v-if="adminRoute" />
+  <PivotPanelPage v-else-if="pivotRoute" />
   <template v-else>
     <a class="skip" href="#main">跳到正文</a>
     <div class="site-shell">

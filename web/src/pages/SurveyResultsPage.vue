@@ -132,6 +132,7 @@ const formatTime = (value: string) =>
       <a href="#/studies/chatgpt-account-survey/results" aria-current="page"
         >统计结果</a
       >
+      <a href="#/studies/chatgpt-account-survey/pivot">透视面板</a>
     </nav>
 
     <div class="results-mode" role="status">

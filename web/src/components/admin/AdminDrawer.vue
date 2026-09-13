@@ -10,6 +10,9 @@ const props = defineProps<{
   hasPrev: boolean;
   hasNext: boolean;
   saving: boolean;
+  /** Hides tag and note editing for surfaces with no investigator session to
+   * save them to, such as the public pivot panel. */
+  readonly?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -153,7 +156,7 @@ function addFromInput() {
         </div>
       </section>
 
-      <section class="drawer-block">
+      <section v-if="!readonly" class="drawer-block">
         <h3>标签</h3>
         <div class="drawer-chips">
           <span
@@ -207,7 +210,7 @@ function addFromInput() {
         </div>
       </section>
 
-      <section class="drawer-block">
+      <section v-if="!readonly" class="drawer-block">
         <h3>备注</h3>
         <textarea
           v-model="note"

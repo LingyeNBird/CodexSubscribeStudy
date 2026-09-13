@@ -21,15 +21,15 @@ import (
 )
 
 const (
-	adminCookieName  = "study_admin"
-	adminCookiePath  = "/api/admin"
-	adminSessionTTL  = 2 * time.Hour
-	adminSessionMax  = 32
-	adminLoginWindow = time.Minute
-	adminLoginLimit  = 10
-	adminLoginKeys   = 1000
-	adminRecordLimit = 5000
-	adminBodyLimit   = 4 << 10
+	adminCookieName   = "study_admin"
+	adminCookiePath   = "/api/admin"
+	adminSessionTTL   = 2 * time.Hour
+	adminSessionMax   = 32
+	adminLoginWindow  = time.Minute
+	adminLoginLimit   = 10
+	adminLoginKeys    = 1000
+	surveyRecordLimit = 5000
+	adminBodyLimit    = 4 << 10
 )
 
 // AdminConfig is the credential file for the read-only administrator panel. It
@@ -301,7 +301,12 @@ func (s *Server) serveAdminCatalog(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(surveyCatalogJSON)
 }
 
-type adminSubmission struct {
+// surveyRecordCore is everything about a submission that is safe to publish:
+// the study never collects usernames, emails, or other identifying fields, so
+// none of this needs to be restricted to the administrator panel. Investigator
+// tags and notes are the only submission-adjacent data that stay admin-only,
+// since they are the investigator's own working notes rather than survey data.
+type surveyRecordCore struct {
 	ID              uint64              `json:"id"`
 	SubmittedAt     *time.Time          `json:"submittedAt"`
 	Status          []string            `json:"status"`
@@ -312,8 +317,12 @@ type adminSubmission struct {
 	UsagePattern    []*int              `json:"usagePattern,omitempty"`
 	IPRisk          *int                `json:"ipRisk,omitempty"`
 	LegacyIPQuality json.RawMessage     `json:"legacyIPQuality,omitempty"`
-	Tags            []string            `json:"tags"`
-	Note            string              `json:"note"`
+}
+
+type adminSubmission struct {
+	surveyRecordCore
+	Tags []string `json:"tags"`
+	Note string   `json:"note"`
 }
 
 // rawAnswers reports what a respondent actually submitted, before the bucketing
@@ -370,8 +379,65 @@ func parseSurveyTime(value string) *time.Time {
 	return nil
 }
 
-// listSurveyRecords returns the newest submissions first, capped so that a
-// large database cannot turn the admin view into an unbounded response.
+// scanSurveyRecordCores reads the newest submissions first, capped so that a
+// large database cannot turn a response into an unbounded one. It has no
+// notion of investigator annotations, so every caller gets the same
+// publishable fields regardless of which endpoint it backs.
+func scanSurveyRecordCores(tx *sql.Tx, limit int) (cores []surveyRecordCore, total int, err error) {
+	if err := tx.QueryRow("SELECT COUNT(*) FROM survey_submissions").Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	rows, err := tx.Query("SELECT id, submitted_at, payload FROM survey_submissions ORDER BY id DESC LIMIT ?", limit)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var (
+			id      int64
+			stamp   sql.NullString
+			payload string
+		)
+		if err := rows.Scan(&id, &stamp, &payload); err != nil {
+			return nil, 0, err
+		}
+		var record storedSurveyRecord
+		if err := json.Unmarshal([]byte(payload), &record); err != nil {
+			return nil, 0, err
+		}
+		core := surveyRecordCore{
+			ID:              uint64(id),
+			SubmittedAt:     record.SubmittedAt,
+			Status:          record.Status,
+			Answers:         record.Answers,
+			Details:         record.Details,
+			Raw:             record.SurveySubmission.rawAnswers(),
+			Normalized:      record.SurveySubmission.normalized(),
+			UsagePattern:    record.UsagePattern,
+			IPRisk:          record.IPRisk,
+			LegacyIPQuality: record.LegacyIPQuality,
+		}
+		if stamp.Valid {
+			if parsed := parseSurveyTime(stamp.String); parsed != nil {
+				core.SubmittedAt = parsed
+			}
+		}
+		if core.Status == nil {
+			core.Status = []string{}
+		}
+		if core.Answers == nil {
+			core.Answers = map[string][]string{}
+		}
+		if core.Details == nil {
+			core.Details = map[string]string{}
+		}
+		cores = append(cores, core)
+	}
+	return cores, total, rows.Err()
+}
+
+// listSurveyRecords returns the newest submissions first, joined with the
+// investigator's tags and notes. It backs the administrator panel only.
 func (s *Store) listSurveyRecords(limit int) (adminSubmissions, error) {
 	result := adminSubmissions{Records: []adminSubmission{}}
 	err := s.db.View(func(tx *sql.Tx) error {
@@ -379,60 +445,19 @@ func (s *Store) listSurveyRecords(limit int) (adminSubmissions, error) {
 		if err != nil {
 			return err
 		}
-		if err := tx.QueryRow("SELECT COUNT(*) FROM survey_submissions").Scan(&result.Total); err != nil {
-			return err
-		}
-		rows, err := tx.Query("SELECT id, submitted_at, payload FROM survey_submissions ORDER BY id DESC LIMIT ?", limit)
+		cores, total, err := scanSurveyRecordCores(tx, limit)
 		if err != nil {
 			return err
 		}
-		defer rows.Close()
-		for rows.Next() {
-			var (
-				id      int64
-				stamp   sql.NullString
-				payload string
-			)
-			if err := rows.Scan(&id, &stamp, &payload); err != nil {
-				return err
-			}
-			var record storedSurveyRecord
-			if err := json.Unmarshal([]byte(payload), &record); err != nil {
-				return err
-			}
-			entry := adminSubmission{
-				ID:              uint64(id),
-				SubmittedAt:     record.SubmittedAt,
-				Status:          record.Status,
-				Answers:         record.Answers,
-				Details:         record.Details,
-				Raw:             record.SurveySubmission.rawAnswers(),
-				Normalized:      record.SurveySubmission.normalized(),
-				UsagePattern:    record.UsagePattern,
-				IPRisk:          record.IPRisk,
-				LegacyIPQuality: record.LegacyIPQuality,
-				Tags:            []string{},
-			}
-			if stamp.Valid {
-				if parsed := parseSurveyTime(stamp.String); parsed != nil {
-					entry.SubmittedAt = parsed
-				}
-			}
-			if entry.Status == nil {
-				entry.Status = []string{}
-			}
-			if entry.Answers == nil {
-				entry.Answers = map[string][]string{}
-			}
-			if entry.Details == nil {
-				entry.Details = map[string]string{}
-			}
-			if annotation, ok := annotations[entry.ID]; ok {
+		result.Total = total
+		for _, core := range cores {
+			entry := adminSubmission{surveyRecordCore: core, Tags: []string{}}
+			if annotation, ok := annotations[core.ID]; ok {
 				entry.Tags, entry.Note = annotation.Tags, annotation.Note
 			}
 			result.Records = append(result.Records, entry)
 		}
-		return rows.Err()
+		return nil
 	})
 	if err != nil {
 		return adminSubmissions{}, err
@@ -451,7 +476,7 @@ func (s *Server) serveAdminSubmissions(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	result, err := s.store.listSurveyRecords(adminRecordLimit)
+	result, err := s.store.listSurveyRecords(surveyRecordLimit)
 	if err != nil {
 		fail(w, http.StatusServiceUnavailable, "storage_unavailable")
 		return

@@ -16,6 +16,9 @@ const props = defineProps<{
   density: "compact" | "cozy";
   sort: { key: string; desc: boolean };
   selected: number[];
+  /** Hides the tag/note columns from the picker on surfaces where they are
+   * always empty, such as the public pivot panel. */
+  readonly?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -28,13 +31,17 @@ const emit = defineEmits<{
 
 const settingsOpen = ref(false);
 
-const baseColumns = [
+const baseColumns = computed(() => [
   { key: "id", title: "编号" },
   { key: "submittedAt", title: "提交时间" },
   { key: "status", title: "异常状态" },
-  { key: "tags", title: "标签" },
-  { key: "note", title: "备注" },
-];
+  ...(props.readonly
+    ? []
+    : [
+        { key: "tags", title: "标签" },
+        { key: "note", title: "备注" },
+      ]),
+]);
 
 const questionColumns = computed(() =>
   (props.catalog?.definitions ?? []).map((question) => ({
@@ -45,7 +52,7 @@ const questionColumns = computed(() =>
 
 const columnTitle = computed(() => {
   const map = new Map<string, string>();
-  for (const column of [...baseColumns, ...questionColumns.value])
+  for (const column of [...baseColumns.value, ...questionColumns.value])
     map.set(column.key, column.title);
   return map;
 });

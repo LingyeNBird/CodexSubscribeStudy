@@ -16,15 +16,17 @@ import (
 )
 
 type Server struct {
-	store     *Store
-	assets    fs.FS
-	admin     *adminAuth
-	mu        sync.Mutex
-	cached    Result
-	cachedAt  time.Time
-	tokens    float64
-	lastToken time.Time
-	sem       chan struct{}
+	store          *Store
+	assets         fs.FS
+	admin          *adminAuth
+	mu             sync.Mutex
+	cached         Result
+	cachedAt       time.Time
+	tokens         float64
+	lastToken      time.Time
+	pivotTokens    float64
+	pivotLastToken time.Time
+	sem            chan struct{}
 }
 
 // Option enables optional server features without changing existing callers.
@@ -40,7 +42,15 @@ func WithAdmin(config *AdminConfig) Option {
 }
 
 func NewServer(store *Store, assets fs.FS, options ...Option) *Server {
-	server := &Server{store: store, assets: assets, tokens: 60, lastToken: time.Now(), sem: make(chan struct{}, 16)}
+	server := &Server{
+		store:          store,
+		assets:         assets,
+		tokens:         60,
+		lastToken:      time.Now(),
+		pivotTokens:    pivotBurst,
+		pivotLastToken: time.Now(),
+		sem:            make(chan struct{}, 16),
+	}
 	for _, option := range options {
 		option(server)
 	}
@@ -77,6 +87,28 @@ func (s *Server) allow() bool {
 	return true
 }
 
+// pivotBurst and the refill rate below are deliberately generous: the public
+// pivot feed is read-only and the dataset is small, so this exists only as
+// insurance against a runaway script, not because normal browsing is
+// expected to come close to the limit.
+const pivotBurst = 120
+
+func (s *Server) allowPivot() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := time.Now()
+	s.pivotTokens += now.Sub(s.pivotLastToken).Seconds()
+	if s.pivotTokens > pivotBurst {
+		s.pivotTokens = pivotBurst
+	}
+	s.pivotLastToken = now
+	if s.pivotTokens < 1 {
+		return false
+	}
+	s.pivotTokens--
+	return true
+}
+
 func respond(w http.ResponseWriter, status int, value any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
@@ -110,6 +142,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	case "/api/admin/session", "/api/admin/catalog", "/api/admin/submissions", "/api/admin/annotations":
 		s.serveAdmin(w, r)
+		return
+	case "/api/pivot/catalog", "/api/pivot/submissions":
+		s.servePivot(w, r)
 		return
 	case "/healthz":
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
