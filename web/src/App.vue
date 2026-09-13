@@ -1,10 +1,21 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import {
+  computed,
+  defineAsyncComponent,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+} from "vue";
 import type { Study } from "./types";
 import AccountSurvey from "./AccountSurvey.vue";
 import SurveyResultsPage from "./pages/SurveyResultsPage.vue";
 import AdminPanelPage from "./pages/AdminPanelPage.vue";
 import PivotPanelPage from "./pages/PivotPanelPage.vue";
+
+const FeedbackDialog = defineAsyncComponent(
+  () => import("./components/FeedbackDialog.vue"),
+);
+const feedbackOpen = ref(false);
 
 const study = ref<Study | null>(null);
 /** The panel keeps its state in a `?s=` suffix, which is not part of the route. */
@@ -120,7 +131,7 @@ onBeforeUnmount(() => {
             href="#/privacy"
             :aria-current="route === '/privacy' ? 'page' : undefined"
             >隐私与参与</a
-          >
+          ><button type="button" @click="feedbackOpen = true">反馈</button>
         </nav>
         <a
           class="source-link"
@@ -171,6 +182,7 @@ onBeforeUnmount(() => {
         <a href="#/privacy">去标识化 · 长期保留</a>
       </footer>
     </div>
+    <FeedbackDialog v-if="feedbackOpen" @close="feedbackOpen = false" />
   </template>
 </template>
 

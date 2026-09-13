@@ -1,0 +1,86 @@
+:global(html:has(.feedback-dialog[open])) {
+  overflow: hidden;
+  scrollbar-gutter: stable;
+}
+.feedback-dialog {
+  width: min(440px, calc(100% - 32px));
+  margin: auto;
+  padding: 24px 26px;
+  border: var(--line);
+  border-radius: 18px;
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: 6px 7px 0 var(--ink);
+}
+.feedback-dialog::backdrop {
+  background: #26352e80;
+}
+.feedback-dialog h2 {
+  margin: 0 0 14px;
+  font-size: 1.2rem;
+}
+.feedback-dialog textarea {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  min-height: 120px;
+  padding: 10px 12px;
+  border: 1px solid #9bab9f;
+  border-radius: 10px;
+  font: inherit;
+  font-size: 0.85rem;
+}
+.feedback-dialog textarea:disabled {
+  opacity: 0.6;
+}
+.feedback-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+  font-size: 0.76rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.feedback-error {
+  color: #a13d2b;
+  text-align: right;
+}
+.feedback-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 18px;
+}
+.feedback-actions button {
+  padding: 8px 16px;
+  border: 1px solid #8e9e85;
+  border-radius: 9px;
+  background: var(--paper);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.85rem;
+}
+.feedback-actions button:hover:not(:disabled) {
+  background: #eaf2e5;
+}
+.feedback-actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.feedback-actions button.primary {
+  background: var(--mint);
+  font-weight: 650;
+}
+.feedback-status {
+  margin: 34px 0;
+  text-align: center;
+  font-size: 1.05rem;
+  font-weight: 650;
+}
+.feedback-dialog button:focus-visible,
+.feedback-dialog textarea:focus-visible {
+  outline: 3px solid #427b62;
+  outline-offset: 3px;
+}

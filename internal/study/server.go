@@ -27,6 +27,7 @@ type Server struct {
 	pivotTokens    float64
 	pivotLastToken time.Time
 	sem            chan struct{}
+	feedback       *feedbackQueue
 }
 
 // Option enables optional server features without changing existing callers.
@@ -50,6 +51,7 @@ func NewServer(store *Store, assets fs.FS, options ...Option) *Server {
 		pivotTokens:    pivotBurst,
 		pivotLastToken: time.Now(),
 		sem:            make(chan struct{}, 16),
+		feedback:       newFeedbackQueue(),
 	}
 	for _, option := range options {
 		option(server)
@@ -145,6 +147,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	case "/api/pivot/catalog", "/api/pivot/submissions":
 		s.servePivot(w, r)
+		return
+	case "/api/feedback":
+		s.serveFeedback(w, r)
 		return
 	case "/healthz":
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {

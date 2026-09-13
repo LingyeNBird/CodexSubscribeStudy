@@ -60,9 +60,17 @@
   font-size: 0.9rem;
   font-weight: 650;
 }
-.topbar nav a {
+.topbar nav a,
+.topbar nav button {
   padding: 6px 0;
   position: relative;
+}
+.topbar nav button {
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
 }
 .topbar nav a[aria-current] {
   box-shadow: 0 3px 0 var(--ink);
